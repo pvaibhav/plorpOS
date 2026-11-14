@@ -119,7 +119,7 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 	out[GM_SHADER].live  = u->shaders;
 	/* Under the scanline filter: how the picture is scaled to the panel. */
 	out[GM_SCALING].value = u->scaling;
-	out[GM_SCALING].live  = u->scaling != NULL;
+	out[GM_SCALING].live  = u->scaling != NULL && u->scaling_live;
 	/* Under Shader, the same question again, and only a Game Boy game has
 	 * one - anything else says None and is passed over. */
 	out[GM_PALETTE].value = u->palette ? u->palette : "None";
@@ -152,8 +152,11 @@ int gm_compact(menu_row *rows, int n, int *ids)
 	int i, k = 0;
 
 	for (i = 0; i < n; i++) {
-		if ((i == GM_FILL || i == GM_SHADER || i == GM_SCALING || i == GM_PALETTE || i == GM_DISC ||
+		if ((i == GM_FILL || i == GM_SHADER || i == GM_PALETTE || i == GM_DISC ||
 		     i == GM_STYLUS) && !rows[i].live)
+			continue;
+		/* Scaling stays, greyed, when it is only switched off (Integer). */
+		if (i == GM_SCALING && !rows[i].value)
 			continue;
 		rows[k] = rows[i];
 		ids[k++] = i;

@@ -919,7 +919,7 @@ static void ingame_rows(void)
 	u.dmode = "Native"; u.earned = 12; u.total = 40;
 	u.nds = false; u.fill = NULL;
 	u.shader = "Real LCD"; u.shaders = true; u.palette = "GB Pocket";
-	u.disc = "Disc 2"; u.stylus = NULL; u.scaling = "Crisp";
+	u.disc = "Disc 2"; u.stylus = NULL; u.scaling = "Crisp"; u.scaling_live = true;
 	n = gm_rows(&u, rows, &b);
 
 	printf("in-game menu, a game with a set:\n");
@@ -983,6 +983,22 @@ static void ingame_rows(void)
 	ck(!holds(got, k, GM_CHEEVOS), "and never rests on it");
 	ck(holds(got, k, GM_QUIT) && holds(got, k, GM_CONTINUE),
 	   "the rows either side of it still work");
+
+	u.scaling = "Exact"; u.scaling_live = false;
+	n = gm_rows(&u, rows, &b);
+	printf("in-game menu, Integer display on the Flip:\n");
+	{
+		menu_row shown[GM_ROWS];
+		int ids[GM_ROWS], m, at = -1;
+
+		memcpy(shown, rows, sizeof shown);
+		m = gm_compact(shown, n, ids);
+		for (int i = 0; i < m; i++) if (ids[i] == GM_SCALING) at = i;
+		ck(at >= 0 && !strcmp(val(&shown[at]), "Exact"), "Scaling is still shown, and reads Exact");
+	}
+	k = reachable(rows, n, got, GM_ROWS);
+	ck(!rows[GM_SCALING].live && !holds(got, k, GM_SCALING), "and the cursor passes over it");
+	ck(holds(got, k, GM_DISPLAY), "Display above it still works");
 
 	u.shaders = false; u.scaling = NULL;
 	n = gm_rows(&u, rows, &b);
