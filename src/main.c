@@ -672,6 +672,62 @@ static void game_shader_save(app *a, int sys, const game_entry *g, int i)
 	db_set_str(db_dev(), key, a->shaders.e[i].name);
 }
 
+#if defined(PLATFORM_MIYOO)
+/* The Flip's Scaling (diatom ADR-0050), kept as display and shader are:
+ * scaling.<TAG> is the shelf's default, scaling.<TAG>.<file> a game's own.
+ * Stored by diatom's filter names. Crisp is the default. At a whole factor it
+ * is Sharp, pixel for pixel. At the Flip's usual 2.5x to 4.7x it keeps every
+ * source pixel the same size, which Sharp cannot, and it does not blur as Soft
+ * does. */
+static const struct { const char *name, *label; } SCALINGS[] = {
+	{ "nearest", "Sharp" }, { "sharp", "Crisp" }, { "linear", "Soft" },
+};
+#define SCALING_COUNT   3
+#define SCALING_DEFAULT 1
+
+static int scaling_get(const char *key, int fallback)
+{
+	char name[16];
+
+	if (db_get_str(db_dev(), key, name, sizeof name, NULL))
+		for (int k = 0; k < SCALING_COUNT; k++)
+			if (!strcmp(SCALINGS[k].name, name)) return k;
+	return fallback;
+}
+
+static int sys_scaling(app *a, int sys)
+{
+	char key[CFG_STR + 16];
+
+	snprintf(key, sizeof key, "scaling.%s", a->sys.systems[sys].tag);
+	return scaling_get(key, SCALING_DEFAULT);
+}
+
+static void sys_scaling_save(app *a, int sys, int k)
+{
+	char key[CFG_STR + 16];
+
+	snprintf(key, sizeof key, "scaling.%s", a->sys.systems[sys].tag);
+	db_set_str(db_dev(), key, SCALINGS[k].name);
+}
+
+static int game_scaling(app *a, int sys, const game_entry *g)
+{
+	char key[LIB_PATH + 48];
+
+	ovr_key(key, sizeof key, "scaling", a, sys, g);
+	return scaling_get(key, sys_scaling(a, sys));
+}
+
+static void game_scaling_save(app *a, int sys, const game_entry *g, int k)
+{
+	char key[LIB_PATH + 48];
+
+	ovr_key(key, sizeof key, "scaling", a, sys, g);
+	db_set_str(db_dev(), key, SCALINGS[k].name);
+}
+#endif
+
 /* The DS's Display: the game's when this panel offers it, else the shelf's. */
 static int game_fill(app *a, int sys, const game_entry *g)
 {
@@ -6484,6 +6540,10 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.engine     = engine_label(a, sys);
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
+#if defined(PLATFORM_MIYOO)
+		u.scaling      = SCALINGS[sys_scaling(a, sys)].label;
+		u.scaling_live = !(is_pico8(sc) && a->view[sys].native);
+#endif
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_list = u.muse && muse_tab() == MT_ARTISTS && muse_artist_filter() < 0;
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
@@ -6677,20 +6737,26 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 }
 
 /* Reset Display Overrides (plorpos-36e): every game of a shelf back to its defaults - the rows the in-game menu
- * wrote (display/shader/dsfill/dsswap.<TAG>.<file>, and a Game Boy shelf's palette.<TAG>.<file>). The defaults
+ * wrote (display/shader/dsfill/dsswap/scaling.<TAG>.<file>, and a Game Boy shelf's palette.<TAG>.<file>). The defaults
  * themselves stay. Asked first, No selected. */
 static void display_overrides_reset(app *a, int sys)
 {
-	static const char *const KINDS[] = { "display", "shader", "dsfill", "dsswap" };
+	static const char *const KINDS[] = { "display", "shader", "dsfill", "dsswap", "scaling" };
 	static const char *const YES[] = { "Yes" };
 	const char *tag = a->sys.systems[sys].tag;
 	bool pal = gb_palette_tag(tag), nds = is_nds_tag(tag);
 	char key[CFG_STR + 16];
 
 	if (pick_panel_ex(a, "Reset Display Overrides",
+#if defined(PLATFORM_MIYOO)
+	                  pal ? "Are you sure? This will reset\nper-game Palette, Display Mode,\nScaling and Scanline Filter"
+	                  : nds ? "Are you sure? This will reset\nper-game Layout, Display Mode,\nScaling and Scanline Filter"
+	                  : "Are you sure? This will reset\nper-game Display Mode, Scaling\nand Scanline Filter",
+#else
 	                  pal ? "Are you sure? This will reset\nper-game Palette, Display Mode,\nand Shader preferences"
 	                  : nds ? "Are you sure? This will reset\nper-game Layout, Display Mode,\nand Shader preferences"
 	                  : "Are you sure? This will reset\nper-game Display Mode and\nShader preferences",
+#endif
 	                  YES, 1, "No") != 0)
 		return;
 	for (size_t k = 0; k < sizeof KINDS / sizeof *KINDS; k++) {
@@ -9156,6 +9222,14 @@ static int menu_shelf_width(app *a)
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
 		}
+#if defined(PLATFORM_MIYOO)
+		for (k = 0; !own && k < SCALING_COUNT; k++) {
+			int mw;
+			rows[sm_index(sm_extra_shown(a->sys.systems[i].tag), SM_SCALING)].value = SCALINGS[k].label;
+			mw = menu_measure(rows, n, heading);
+			if (mw > w) w = mw;
+		}
+#endif
 		for (k = 0; !own && gb_palette_tag(a->sys.systems[i].tag) && k < GBPAL_COUNT; k++) {
 			int mw;
 			rows[SM_FILL].value = gbpal_label(k);
@@ -9920,6 +9994,17 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 			}
 			return MENU_STAY;
 		}
+#if defined(PLATFORM_MIYOO)
+		/* Default Scaling: left and right step it, A steps forward, saved at
+		 * once. Not for native PICO-8, which never goes through diatom. */
+		if (sel == SM_SCALING && (d || key == IN_ACCEPT) &&
+		    !(is_pico8(&a->sys.systems[a->sys_cursor]) && a->view[a->sys_cursor].native)) {
+			int k = sys_scaling(a, a->sys_cursor) + (d ? d : 1);
+
+			sys_scaling_save(a, a->sys_cursor, (k + SCALING_COUNT) % SCALING_COUNT);
+			return MENU_STAY;
+		}
+#endif
 		/* Sort order, on the same left/right idiom.
 		 *
 		 * The cursor follows the GAME, not its index. Re-sorting under a
@@ -10877,6 +10962,20 @@ static void gm_fill_step(app *a, int d)
 	plat_resident_sync_rect(150);
 }
 
+#if defined(PLATFORM_MIYOO)
+/* Scaling for this game alone, sent to it at once, as Display is. */
+static void gm_scaling_step(app *a, int d)
+{
+	int sys, k;
+	const game_entry *g = playing(a, &sys);
+
+	k = (game_scaling(a, sys, g) + d + SCALING_COUNT) % SCALING_COUNT;
+	game_scaling_save(a, sys, g, k);
+	plat_resident_line("SETDISPLAY\tfilter=%s", SCALINGS[k].name);
+	plat_resident_sync_rect(150);
+}
+#endif
+
 /* What the in-game menu needs from the app, handed to gm_rows to become rows.
  * Same split as everywhere else - see ADR-0001. */
 static int gm_build(app *a, menu_row *out, gm_bufs *b)
@@ -10894,6 +10993,11 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 		u.nds    = is_nds_tag(a->sys.systems[sys].tag);
 		u.fill   = ds_fill_shown(a->sys.systems[sys].tag) ? FILL_LABEL[game_fill(a, sys, g)] : NULL;
 		u.shader = a->shaders.e[game_shader(a, sys, g)].name;
+#if defined(PLATFORM_MIYOO)
+		u.scaling = SCALINGS[game_scaling(a, sys, g)].label;
+#else
+		u.scaling = NULL;
+#endif
 	}
 	u.shaders = a->shaders.count > 1;
 	{
@@ -14273,6 +14377,14 @@ static int gm_width(app *a)
 		mw = gm_measure(rows);
 		if (mw > w) w = mw;
 	}
+#if defined(PLATFORM_MIYOO)
+	for (k = 0; k < SCALING_COUNT && rows[GM_SCALING].live; k++) {
+		int mw;
+		rows[GM_SCALING].value = SCALINGS[k].label;
+		mw = gm_measure(rows);
+		if (mw > w) w = mw;
+	}
+#endif
 	for (k = 0; k < GBPAL_COUNT && rows[GM_PALETTE].live; k++) {
 		int mw;
 		rows[GM_PALETTE].value = gbpal_label(k);
@@ -14843,6 +14955,14 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		sh_ctx sc = sh_game(a, c);
 
 		sh_key(a, &sc, IN_ACCEPT, (sh_cur(a, &sc) + 1) % a->shaders.count);
+		return MENU_STAY;
+	}
+#endif
+#if defined(PLATFORM_MIYOO)
+	/* Scaling: to the running game at once, as Display is, so it is judged
+	 * against the game it is for. */
+	if (sel == GM_SCALING && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		gm_scaling_step(a, key == IN_LEFT ? -1 : 1);
 		return MENU_STAY;
 	}
 #endif
@@ -16191,6 +16311,10 @@ static void launch_one(app *a)
 			.mode   = DMODES[game_dmode(a, o, &v->list.items[v->cursor])].name,
 			.fill   = is_nds_tag(a->sys.systems[o].tag)
 			          ? FILL_NAME[game_fill(a, o, &v->list.items[v->cursor])] : NULL,
+#if defined(PLATFORM_MIYOO)
+			/* On RUN, as the mode, so the first frame is scaled as chosen. */
+			.filter = SCALINGS[game_scaling(a, o, &v->list.items[v->cursor])].name,
+#endif
 		};
 		if (plat_resident_send(&g)) {
 			int r;

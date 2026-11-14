@@ -100,6 +100,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		                             : (menu_row){ "Default Display", u->fill,    true };
 		out[SM_SHADER]  = (menu_row){ "Default " SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
 		                              u->shader_live };
+#if defined(PLATFORM_MIYOO)
+		out[SM_SCALING] = (menu_row){ "Default Scaling", u->scaling, u->scaling_live };
+#endif
 		/* Button Mapping is out until there is something behind it. Diatom
 		 * supplies core button labels, so the hook is real - but a dead row
 		 * in a menu of live ones is a promise the launcher is not keeping,
