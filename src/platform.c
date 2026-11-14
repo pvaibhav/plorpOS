@@ -1491,8 +1491,10 @@ bool plat_resident_send(const plat_game *g)
 		char disc[24] = "";
 		if (g->disc > 0) snprintf(disc, sizeof disc, "\tdisc=%d", g->disc - 1);
 		/* fill= with mode=, for the same first frames (plorpos-6ei.13). */
-		char fill[24] = "";
+		char fill[24] = "", filter[24] = "";
 		if (g->fill) snprintf(fill, sizeof fill, "\tfill=%s", g->fill);
+		/* filter= the same way (diatom ADR-9001); an older diatom ignores it. */
+		if (g->filter) snprintf(filter, sizeof filter, "\tfilter=%s", g->filter);
 		/* shots= is the Screenshot hotkey's folder (plorpos-gkd.86.2), at
 		 * the card's root beside Roms and Saves, where a player looks; Diatom
 		 * makes it on the first shot. */
@@ -1502,12 +1504,12 @@ bool plat_resident_send(const plat_game *g)
 		 * flash above over again). */
 		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s\tmode=%s"
 		           "\tresume=%s\texit_state=%s\tpreview=%s\tsave=%s"
-		           "\tconsole=%d\tcheevos=%s%s%s\tshots=%s/Screenshots",
+		           "\tconsole=%d\tcheevos=%s%s%s%s\tshots=%s/Screenshots",
 		           g->core, g->rom, tag, mode,
 		           g->resume ? g->resume : "",
 		           g->exit_state ? g->exit_state : "",
 		           g->preview ? g->preview : "", g->save ? g->save : "",
-		           g->console, g->cheevos ? g->cheevos : "", disc, fill, P_CARD))
+		           g->console, g->cheevos ? g->cheevos : "", disc, fill, filter, P_CARD))
 			return false;
 
 		/* Turbo Assign's map (plorpos-tkh), empty at every RUN.

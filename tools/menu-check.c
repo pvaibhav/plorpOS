@@ -902,11 +902,12 @@ static void info_rows(void)
 
 /* ---------- the in-game menu ---------------------------------------------- */
 
-/* Cheevos, Shader, Palette and Disc are the only rows that can be dead (and the
- * last three are then not drawn at all - gm_compact): Cheevos
+/* Cheevos, Shader, Scaling, Palette and Disc are the only rows that can be dead
+ * (and the last four are then not drawn at all - gm_compact): Cheevos
  * exactly when the game has no set, Shader exactly when there is no list (every
- * Brick), Palette exactly when the game is not a Game Boy game, Disc exactly
- * when the game was not launched from an .m3u with discs to swap.
+ * Brick), Scaling anywhere but the Flip, Palette exactly when the game is not a
+ * Game Boy game, Disc exactly when the game was not launched from an .m3u with
+ * discs to swap.
  * Everything else is always something A does. */
 static void ingame_rows(void)
 {
@@ -918,7 +919,7 @@ static void ingame_rows(void)
 	u.dmode = "Native"; u.earned = 12; u.total = 40;
 	u.nds = false; u.fill = NULL;
 	u.shader = "Real LCD"; u.shaders = true; u.palette = "GB Pocket";
-	u.disc = "Disc 2"; u.stylus = NULL;
+	u.disc = "Disc 2"; u.stylus = NULL; u.scaling = "Crisp"; u.scaling_live = true;
 	n = gm_rows(&u, rows, &b);
 
 	printf("in-game menu, a game with a set:\n");
@@ -951,8 +952,12 @@ static void ingame_rows(void)
 	n = gm_rows(&u, rows, &b);
 	ck(!strcmp(val(&rows[GM_SHADER]), "Real LCD"), "and carries the shader's name");
 	ck(rows[GM_SHADER].live, "and is reachable with a list");
-	ck(GM_PALETTE == GM_SHADER + 1 && !strcmp(rows[GM_PALETTE].label, "Palette"),
-	   "Palette is under Shader (plorpos-gkd.76)");
+	ck(GM_SCALING == GM_SHADER + 1 && !strcmp(rows[GM_SCALING].label, "Scaling"),
+	   "Scaling is under Shader (diatom ADR-9001)");
+	ck(!strcmp(val(&rows[GM_SCALING]), "Crisp") && rows[GM_SCALING].live,
+	   "and carries the game's filter, reachable on the Flip");
+	ck(GM_PALETTE == GM_SCALING + 1 && !strcmp(rows[GM_PALETTE].label, "Palette"),
+	   "Palette is under Scaling (plorpos-gkd.76)");
 	ck(!strcmp(val(&rows[GM_PALETTE]), "GB Pocket"), "and carries the game's palette");
 	ck(rows[GM_PALETTE].live, "and is reachable on a Game Boy game");
 	ck(GM_DISC == GM_PALETTE + 1 && !strcmp(rows[GM_DISC].label, "Disc"),
@@ -979,7 +984,23 @@ static void ingame_rows(void)
 	ck(holds(got, k, GM_QUIT) && holds(got, k, GM_CONTINUE),
 	   "the rows either side of it still work");
 
-	u.shaders = false;
+	u.scaling = "Crisp"; u.scaling_live = false;
+	n = gm_rows(&u, rows, &b);
+	printf("in-game menu, Integer display on the Flip:\n");
+	{
+		menu_row shown[GM_ROWS];
+		int ids[GM_ROWS], m, at = -1;
+
+		memcpy(shown, rows, sizeof shown);
+		m = gm_compact(shown, n, ids);
+		for (int i = 0; i < m; i++) if (ids[i] == GM_SCALING) at = i;
+		ck(at >= 0 && !strcmp(val(&shown[at]), "Crisp"), "Scaling is still shown, with the choice it had");
+	}
+	k = reachable(rows, n, got, GM_ROWS);
+	ck(!rows[GM_SCALING].live && !holds(got, k, GM_SCALING), "and the cursor passes over it");
+	ck(holds(got, k, GM_DISPLAY), "Display above it still works");
+
+	u.shaders = false; u.scaling = NULL;
 	n = gm_rows(&u, rows, &b);
 	printf("in-game menu, no shader list (a Brick):\n");
 	ck(!strcmp(val(&rows[GM_SHADER]), "None"), "Shader says None");
@@ -987,6 +1008,7 @@ static void ingame_rows(void)
 	k = reachable(rows, n, got, GM_ROWS);
 	ck(!holds(got, k, GM_SHADER), "so the cursor never rests on it");
 	ck(holds(got, k, GM_DISPLAY), "and Display above it still works");
+	ck(!rows[GM_SCALING].live && !holds(got, k, GM_SCALING), "Scaling, not the Flip: no stop");
 
 	u.palette = NULL;
 	n = gm_rows(&u, rows, &b);
@@ -1006,9 +1028,9 @@ static void ingame_rows(void)
 		   "Disc says None and does nothing on a game not launched from an .m3u");
 		m = gm_compact(rows, n, ids);
 		printf("in-game menu as drawn, a Brick's Game Boy-less, one-disc game:\n");
-		ck(m == GM_ROWS - 5, "Display (the DS's), Shader, Palette, Disc and Stylus Stick are not drawn at all");
+		ck(m == GM_ROWS - 6, "Display (the DS's), Shader, Scaling, Palette, Disc and Stylus Stick are not drawn at all");
 		for (i = 0; i < m; i++) {
-			if (!strcmp(rows[i].label, "Shader")) shader = 1;
+			if (!strcmp(rows[i].label, "Shader") || !strcmp(rows[i].label, "Scaling")) shader = 1;
 			if (!strcmp(rows[i].label, "Palette")) palette = 1;
 			if (!strcmp(rows[i].label, "Disc")) disc = 1;
 		}
@@ -1023,15 +1045,15 @@ static void ingame_rows(void)
 		u.shaders = true; u.palette = "Auto";
 		n = gm_rows(&u, rows, &b);
 		m = gm_compact(rows, n, ids);
-		ck(m == GM_ROWS - 3 && ids[GM_PALETTE - 1] == GM_PALETTE &&
-		   ids[GM_DISC - 1] == GM_CHEEVOS,
-		   "a Game Boy game on the GKD draws every row but Disc");
+		ck(m == GM_ROWS - 4 && ids[GM_PALETTE - 2] == GM_PALETTE &&
+		   ids[GM_DISC - 2] == GM_CHEEVOS,
+		   "a Game Boy game on the GKD draws every row but Scaling and Disc");
 
 		u.palette = NULL; u.disc = "Disc 1";
 		n = gm_rows(&u, rows, &b);
 		m = gm_compact(rows, n, ids);
-		ck(m == GM_ROWS - 3 && ids[GM_PALETTE - 1] == GM_DISC &&
-		   !strcmp(rows[GM_PALETTE - 1].label, "Disc"),
+		ck(m == GM_ROWS - 4 && ids[GM_PALETTE - 2] == GM_DISC &&
+		   !strcmp(rows[GM_PALETTE - 2].label, "Disc"),
 		   "an .m3u PlayStation game draws Disc where Palette would be");
 	}
 }

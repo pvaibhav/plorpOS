@@ -92,7 +92,11 @@ typedef enum { SC_BOXART, SC_SS, SC_IMPORT, SC_ROWS } sc_row;
  * so these are hooks waiting to be wired, not wishes. */
 typedef enum {
 	SM_CORE, SM_SORT,
-	SM_DISPLAY, SM_FILL, SM_SHADER, /* SM_BUTTONS, */ SM_BOXART, SM_RESCAN,
+	SM_DISPLAY, SM_FILL, SM_SHADER,
+#if defined(PLATFORM_MIYOO)
+	SM_SCALING,     /* Default Scaling: Crisp or Soft (diatom ADR-9001) */
+#endif
+	/* SM_BUTTONS, */ SM_BOXART, SM_RESCAN,
 	SM_RESET, /* Reset Display Overrides (plorpos-36e): last, and only on a shelf diatom plays */
 	SM_ROWS
 } sm_row;
@@ -238,6 +242,10 @@ typedef struct {
 	 * on PICO-8's shelf running native, which never goes through Diatom. */
 	const char *shader;
 	bool        shader_live;
+	/* The Flip's Default Scaling label, and whether it means anything: not on
+	 * PICO-8's shelf running native, as for the shader. Unused elsewhere. */
+	const char *scaling;
+	bool        scaling_live;
 	/* The label of the shelf's sort order. A label rather than an index for
 	 * the same reason dmode is one: this file must not know the table, or a
 	 * check that links it would have to link the table too. */

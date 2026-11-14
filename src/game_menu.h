@@ -107,7 +107,7 @@ int gi_rows(menu_row *out, const game_info *gi, bool net);
  * without opening a menu to get there. */
 
 typedef enum {
-	GM_CONTINUE, GM_SAVE, GM_LOAD, GM_DISPLAY, GM_FILL, GM_SHADER, GM_PALETTE, GM_DISC,
+	GM_CONTINUE, GM_SAVE, GM_LOAD, GM_DISPLAY, GM_FILL, GM_SHADER, GM_SCALING, GM_PALETTE, GM_DISC,
 	GM_CHEEVOS, GM_HOTKEYS, GM_STYLUS, GM_RESET, GM_QUIT,
 	GM_ROWS
 } gm_row;
@@ -119,6 +119,8 @@ typedef struct {
 	const char *fill;     /* the DS's Display, "Aspect"|"Stretch"|"Integer"; NULL: no row (not a DS, or a panel where they all draw the same) */
 	const char *shader;   /* the shader's name (plorpos-gkd.72.4) */
 	bool        shaders;  /* a list to pick from - the GKD's, never a Brick's */
+	const char *scaling;  /* "Crisp"|"Soft"; NULL: no row (every unit but the Flip, diatom ADR-9001) */
+	bool        scaling_live;  /* false: shown greyed with the stored choice and passed over (Integer draws whole pixels whatever it says) */
 	const char *palette;  /* this game's palette; NULL: not a Game Boy game (plorpos-gkd.76) */
 	const char *stylus;   /* "Left Stick"|"Right Stick"; NULL: not a DS game on a unit with two sticks (plorpos-reo.21.7) */
 	const char *disc;     /* "Disc N"; NULL: not an .m3u, or nothing to swap (plorpos-gkd.47) */
@@ -140,9 +142,10 @@ typedef enum { GMN_CONTINUE, GMN_DISPLAY, GMN_RESET, GMN_SPLORE, GMN_QUIT, GMN_R
 
 /* Splore ends the cart and opens Splore (plorpos-gkd.50.21); greyed in
  * Splore itself, where Reset is the same thing. */
-/* The rows gm_rows made, less the three that can never do anything here:
- * Shader with no list (every Brick), Palette on a game that is not a Game Boy
- * game, and Disc on a game that was not launched from an .m3u. Compacted in place; ids[i] is the gm_row that row i now shows, which
+/* The rows gm_rows made, less the ones that can never do anything here:
+ * Shader with no list (every Brick), Scaling anywhere but the Flip, Palette on
+ * a game that is not a Game Boy game, and Disc on a game that was not launched
+ * from an .m3u. Compacted in place; ids[i] is the gm_row that row i now shows, which
  * is how a selection is read back. Cheevos stays when dead: its "none" answers
  * the question the menu was opened to ask. Returns the new count. */
 int gm_compact(menu_row *rows, int n, int *ids);
