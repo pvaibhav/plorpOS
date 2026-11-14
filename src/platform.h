@@ -237,7 +237,7 @@ typedef struct {
 	const char *shader; /* SETDISPLAY fields for the chain, "" for None, NULL with no shader list */
 	const char *mode;   /* Diatom display mode for the first frame, e.g. "aspect"; NULL = its own */
 	const char *fill;   /* the DS's "aspect"|"stretch" for the first frame (plorpos-6ei.13); NULL: not sent */
-	const char *filter; /* Diatom's scaling filter for the first frame, "nearest"|"sharp"|"linear"; NULL: not sent */
+	const char *filter; /* Diatom's scaling filter for the first frame, "sharp"|"linear"; NULL: not sent */
 } plat_game;
 bool plat_resident_send(const plat_game *g);
 int  plat_resident_wait(void);

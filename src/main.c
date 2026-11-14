@@ -675,14 +675,14 @@ static void game_shader_save(app *a, int sys, const game_entry *g, int i)
 #if defined(PLATFORM_MIYOO)
 /* The Flip's Scaling (diatom ADR-0050), kept as display and shader are:
  * scaling.<TAG> is the shelf's default, scaling.<TAG>.<file> a game's own.
- * Stored by diatom's filter names. Crisp is the default. At a whole factor it
- * is Sharp, pixel for pixel. At the Flip's usual 2.5x to 4.7x it keeps every
- * source pixel the same size, which Sharp cannot, and it does not blur as Soft
- * does. */
+ * Stored by diatom's filter names. A name not in the table, such as an
+ * earlier "nearest", reads as unset. Soft is the default, scaled by the
+ * blitter at no CPU cost. Crisp adds a CPU upscale each frame, which makes
+ * every pixel the same size. */
 static const struct { const char *name, *label; } SCALINGS[] = {
-	{ "nearest", "Sharp" }, { "sharp", "Crisp" }, { "linear", "Soft" },
+	{ "sharp", "Crisp" }, { "linear", "Soft" },
 };
-#define SCALING_COUNT   3
+#define SCALING_COUNT   2
 #define SCALING_DEFAULT 1
 
 static int scaling_get(const char *key, int fallback)
