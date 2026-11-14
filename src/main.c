@@ -673,7 +673,7 @@ static void game_shader_save(app *a, int sys, const game_entry *g, int i)
 }
 
 #if defined(PLATFORM_MIYOO)
-/* The Flip's Scaling (diatom ADR-0050), kept as display and shader are:
+/* The Flip's Scaling (diatom ADR-9001), kept as display and shader are:
  * scaling.<TAG> is the shelf's default, scaling.<TAG>.<file> a game's own.
  * Stored by diatom's filter names. A name not in the table, such as an
  * earlier "nearest", reads as unset. Soft is the default, scaled by the

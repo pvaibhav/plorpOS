@@ -953,7 +953,7 @@ static void ingame_rows(void)
 	ck(!strcmp(val(&rows[GM_SHADER]), "Real LCD"), "and carries the shader's name");
 	ck(rows[GM_SHADER].live, "and is reachable with a list");
 	ck(GM_SCALING == GM_SHADER + 1 && !strcmp(rows[GM_SCALING].label, "Scaling"),
-	   "Scaling is under Shader (diatom ADR-0050)");
+	   "Scaling is under Shader (diatom ADR-9001)");
 	ck(!strcmp(val(&rows[GM_SCALING]), "Crisp") && rows[GM_SCALING].live,
 	   "and carries the game's filter, reachable on the Flip");
 	ck(GM_PALETTE == GM_SCALING + 1 && !strcmp(rows[GM_PALETTE].label, "Palette"),

@@ -94,7 +94,7 @@ typedef enum {
 	SM_CORE, SM_SORT,
 	SM_DISPLAY, SM_FILL, SM_SHADER,
 #if defined(PLATFORM_MIYOO)
-	SM_SCALING,     /* Default Scaling: Crisp or Soft (diatom ADR-0050) */
+	SM_SCALING,     /* Default Scaling: Crisp or Soft (diatom ADR-9001) */
 #endif
 	/* SM_BUTTONS, */ SM_BOXART, SM_RESCAN,
 	SM_RESET, /* Reset Display Overrides (plorpos-36e): last, and only on a shelf diatom plays */

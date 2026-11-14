@@ -1493,7 +1493,7 @@ bool plat_resident_send(const plat_game *g)
 		/* fill= with mode=, for the same first frames (plorpos-6ei.13). */
 		char fill[24] = "", filter[24] = "";
 		if (g->fill) snprintf(fill, sizeof fill, "\tfill=%s", g->fill);
-		/* filter= the same way (diatom ADR-0050); an older diatom ignores it. */
+		/* filter= the same way (diatom ADR-9001); an older diatom ignores it. */
 		if (g->filter) snprintf(filter, sizeof filter, "\tfilter=%s", g->filter);
 		/* shots= is the Screenshot hotkey's folder (plorpos-gkd.86.2), at
 		 * the card's root beside Roms and Saves, where a player looks; Diatom
