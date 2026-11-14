@@ -120,7 +120,7 @@ typedef struct {
 	const char *shader;   /* the shader's name (plorpos-gkd.72.4) */
 	bool        shaders;  /* a list to pick from - the GKD's, never a Brick's */
 	const char *scaling;  /* "Crisp"|"Soft"; NULL: no row (every unit but the Flip, diatom ADR-0050) */
-	bool        scaling_live;  /* false: shown greyed and passed over (Integer draws whole pixels whatever it says) */
+	bool        scaling_live;  /* false: shown greyed with the stored choice and passed over (Integer draws whole pixels whatever it says) */
 	const char *palette;  /* this game's palette; NULL: not a Game Boy game (plorpos-gkd.76) */
 	const char *stylus;   /* "Left Stick"|"Right Stick"; NULL: not a DS game on a unit with two sticks (plorpos-reo.21.7) */
 	const char *disc;     /* "Disc N"; NULL: not an .m3u, or nothing to swap (plorpos-gkd.47) */

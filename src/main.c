@@ -686,8 +686,8 @@ static const struct { const char *name, *label; } SCALINGS[] = {
 #define SCALING_DEFAULT 1
 
 /* An Integer display mode draws whole pixels whatever Scaling says, so the
- * row is greyed there and reads Exact. */
-#define SCALING_EXACT "Exact"
+ * row is greyed there. It keeps showing the stored choice, which applies
+ * again when Display leaves Integer. */
 static bool dmode_whole(int m) { return !strncmp(DMODES[m].name, "integer", 7); }
 
 static int scaling_get(const char *key, int fallback)
@@ -6547,7 +6547,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 #if defined(PLATFORM_MIYOO)
 		u.scaling_live = !(is_pico8(sc) && a->view[sys].native) && !dmode_whole(a->view[sys].dmode);
-		u.scaling      = dmode_whole(a->view[sys].dmode) ? SCALING_EXACT : SCALINGS[sys_scaling(a, sys)].label;
+		u.scaling      = SCALINGS[sys_scaling(a, sys)].label;
 #endif
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_list = u.muse && muse_tab() == MT_ARTISTS && muse_artist_filter() < 0;
@@ -11000,7 +11000,7 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 		u.shader = a->shaders.e[game_shader(a, sys, g)].name;
 #if defined(PLATFORM_MIYOO)
 		u.scaling_live = !dmode_whole(gm_dmode_now(a));
-		u.scaling = u.scaling_live ? SCALINGS[game_scaling(a, sys, g)].label : SCALING_EXACT;
+		u.scaling = SCALINGS[game_scaling(a, sys, g)].label;
 #else
 		u.scaling = NULL;
 		u.scaling_live = false;

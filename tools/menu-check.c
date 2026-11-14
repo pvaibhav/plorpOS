@@ -984,7 +984,7 @@ static void ingame_rows(void)
 	ck(holds(got, k, GM_QUIT) && holds(got, k, GM_CONTINUE),
 	   "the rows either side of it still work");
 
-	u.scaling = "Exact"; u.scaling_live = false;
+	u.scaling = "Crisp"; u.scaling_live = false;
 	n = gm_rows(&u, rows, &b);
 	printf("in-game menu, Integer display on the Flip:\n");
 	{
@@ -994,7 +994,7 @@ static void ingame_rows(void)
 		memcpy(shown, rows, sizeof shown);
 		m = gm_compact(shown, n, ids);
 		for (int i = 0; i < m; i++) if (ids[i] == GM_SCALING) at = i;
-		ck(at >= 0 && !strcmp(val(&shown[at]), "Exact"), "Scaling is still shown, and reads Exact");
+		ck(at >= 0 && !strcmp(val(&shown[at]), "Crisp"), "Scaling is still shown, with the choice it had");
 	}
 	k = reachable(rows, n, got, GM_ROWS);
 	ck(!rows[GM_SCALING].live && !holds(got, k, GM_SCALING), "and the cursor passes over it");
