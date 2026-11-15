@@ -176,29 +176,66 @@ static int ext_is(const char *name, size_t n, const char *ext)
 	return n > e && !strncasecmp(name + n - e, ext, e);
 }
 
+static unsigned rd16(const unsigned char *p) { return p[0] | p[1] << 8; }
+static unsigned long rd32(const unsigned char *p) { return rd16(p) | (unsigned long)rd16(p + 2) << 16; }
+
+/* Whether the largest entry of the zip at `path` is named .gbc or .cgb. The largest is the one diatom loads
+ * (its src/zip.c), by the same rules: stored or deflated, not empty, not a directory, and the first of equals.
+ * Only the central directory is read. */
+static int zip_is_cgb(const char *path)
+{
+	unsigned char tail[66000 + 22], hdr[46];
+	char name[512];
+	unsigned long best = 0, cd_off = 0;
+	unsigned cd_n = 0, k;
+	size_t len, i;
+	long size;
+	int cgb = 0;
+	FILE *f = fopen(path, "rb");
+
+	if (!f) return 0;
+	/* The end record is the last 22 bytes of the file, or sits before a comment of at most 65535 bytes. The
+	 * short read comes first: this runs each time a menu is built, and few zips carry a comment. */
+	if (fseek(f, 0, SEEK_END) || (size = ftell(f)) < 22) { fclose(f); return 0; }
+	for (len = 22; !cd_n && len <= sizeof tail; len = len == 22 ? sizeof tail : sizeof tail + 1) {
+		if (len > (size_t)size) len = (size_t)size;
+		if (fseek(f, size - (long)len, SEEK_SET) || fread(tail, 1, len, f) != len) break;
+		for (i = len - 22 + 1; i-- > 0; )
+			if (!memcmp(tail + i, "PK\5\6", 4)) {
+				cd_n = rd16(tail + i + 10);
+				cd_off = rd32(tail + i + 16);
+				break;
+			}
+		if (len == (size_t)size) break;
+	}
+	if (fseek(f, (long)cd_off, SEEK_SET)) cd_n = 0;
+	for (k = 0; k < cd_n; k++) {
+		unsigned method, nlen;
+		unsigned long usize;
+
+		if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr || memcmp(hdr, "PK\1\2", 4)) break;
+		method = rd16(hdr + 10);
+		usize = rd32(hdr + 24);
+		nlen = rd16(hdr + 28);
+		if (nlen >= sizeof name || fread(name, 1, nlen, f) != nlen) break;
+		if (fseek(f, (long)(rd16(hdr + 30) + rd16(hdr + 32)), SEEK_CUR)) break;
+		if (!usize || (nlen && name[nlen - 1] == '/') || (method != 0 && method != 8)) continue;
+		if (usize > best) {
+			best = usize;
+			cgb = ext_is(name, nlen, ".gbc") || ext_is(name, nlen, ".cgb");
+		}
+	}
+	fclose(f);
+	return cgb;
+}
+
 int gbpal_rom_is_cgb(const char *path)
 {
 	size_t n = strlen(path);
-	unsigned char h[30], b = 0;
+	unsigned char b = 0;
 	FILE *f;
 
-	if (ext_is(path, n, ".zip")) {
-		char end[4];
-		size_t len;
-		int cgb = 0;
-
-		/* A zip opens with its first entry's header: the name's length at 26, the name at 30. Its last four
-		 * bytes are the extension. */
-		if (!(f = fopen(path, "rb"))) return 0;
-		if (fread(h, 1, sizeof h, f) == sizeof h && !memcmp(h, "PK\3\4", 4)) {
-			len = h[26] | (size_t)h[27] << 8;
-			if (len > sizeof end && !fseek(f, (long)(len - sizeof end), SEEK_CUR) &&
-			    fread(end, 1, sizeof end, f) == sizeof end)
-				cgb = !strncasecmp(end, ".gbc", sizeof end) || !strncasecmp(end, ".cgb", sizeof end);
-		}
-		fclose(f);
-		return cgb;
-	}
+	if (ext_is(path, n, ".zip")) return zip_is_cgb(path);
 	if (!ext_is(path, n, ".gb") && !ext_is(path, n, ".gbc") && !ext_is(path, n, ".cgb") && !ext_is(path, n, ".dmg"))
 		return 0;
 	if (!(f = fopen(path, "rb"))) return 0;

@@ -51,9 +51,12 @@ static const struct { const char *core, *on, *off; } CC[] = {
 };
 
 /* Writes a file named `name` in the temporary directory and asks whether it is
- * a Game Boy Color ROM. With `entry` it is a zip's first header naming that
- * entry, else a ROM header whose byte 0x143 is `flag`. */
-static int rom_is(const char *name, unsigned char flag, const char *entry)
+ * a Game Boy Color ROM. With `entries` it is a zip's central directory holding
+ * them, name then size up to a NULL name, with a comment of `flag` bytes. Else
+ * it is a ROM header whose byte 0x143 is `flag`. */
+typedef struct { const char *name; unsigned size; } zentry;
+
+static int rom_is(const char *name, unsigned char flag, const zentry *entries)
 {
 	unsigned char h[0x150] = { 0 };
 	char path[256];
@@ -63,12 +66,26 @@ static int rom_is(const char *name, unsigned char flag, const char *entry)
 
 	snprintf(path, sizeof path, "%s/gbpal-check-%s", tmp ? tmp : "/tmp", name);
 	if (!(f = fopen(path, "wb"))) return -1;
-	if (entry) {
-		memcpy(h, "PK\3\4", 4);
-		h[26] = (unsigned char)strlen(entry);
-		h[27] = (unsigned char)(strlen(entry) >> 8);
-		fwrite(h, 1, 30, f);
-		fwrite(entry, 1, strlen(entry), f);
+	if (entries) {
+		unsigned n = 0;
+
+		for (; entries->name; entries++, n++) {
+			size_t len = strlen(entries->name);
+
+			memset(h, 0, 46);
+			memcpy(h, "PK\1\2", 4);
+			h[24] = (unsigned char)entries->size;
+			h[25] = (unsigned char)(entries->size >> 8);
+			h[28] = (unsigned char)len;
+			h[29] = (unsigned char)(len >> 8);
+			fwrite(h, 1, 46, f);
+			fwrite(entries->name, 1, len, f);
+		}
+		memset(h, 0, 22);
+		memcpy(h, "PK\5\6", 4);
+		h[10] = (unsigned char)n;
+		h[20] = flag;   /* a comment of this many bytes after the end record */
+		fwrite(h, 1, 22 + flag, f);
 	} else {
 		h[0x143] = flag;
 		fwrite(h, 1, sizeof h, f);
@@ -164,11 +181,20 @@ int main(void)
 	printf("Game Boy Color ROMs:\n");
 	ck(rom_is("plain.gbc", 0x80, NULL) && rom_is("plain.gb", 0xC0, NULL), "a plain ROM with the Color flag");
 	ck(!rom_is("plain.gb", 0x00, NULL), "a plain ROM without it");
-	ck(rom_is("a.zip", 0, "Game (USA).gbc") && rom_is("a.zip", 0, "GAME.CGB"), "a zip whose entry is .gbc or .cgb");
-	ck(!rom_is("a.zip", 0, "Game (World).gb") && !rom_is("a.zip", 0, ".gbc"), "a zip whose entry is .gb, or has no name before .gbc");
+	ck(rom_is("a.zip", 0, (zentry[]){ { "Game (USA).gbc", 9 }, { NULL, 0 } }) &&
+	   rom_is("a.zip", 0, (zentry[]){ { "GAME.CGB", 9 }, { NULL, 0 } }), "a zip whose entry is .gbc or .cgb");
+	ck(!rom_is("a.zip", 0, (zentry[]){ { "Game (World).gb", 9 }, { NULL, 0 } }) &&
+	   !rom_is("a.zip", 0, (zentry[]){ { ".gbc", 9 }, { NULL, 0 } }), "a zip whose entry is .gb, or has no name before .gbc");
+	ck(rom_is("a.zip", 0, (zentry[]){ { "readme.txt", 5 }, { "game.gbc", 900 }, { "art.png", 40 }, { NULL, 0 } }),
+	   "the largest entry decides, wherever it is");
+	ck(!rom_is("a.zip", 0, (zentry[]){ { "small.gbc", 5 }, { "game.gb", 900 }, { NULL, 0 } }) &&
+	   !rom_is("a.zip", 0, (zentry[]){ { "dir.gbc/", 900 }, { "empty.gbc", 0 }, { "game.gb", 5 }, { NULL, 0 } }),
+	   "a smaller .gbc, a directory and an empty entry do not");
+	ck(rom_is("a.zip", 0, (zentry[]){ { "a.gbc", 9 }, { "b.gb", 9 }, { NULL, 0 } }), "the first of two equals");
+	ck(rom_is("a.zip", 40, (zentry[]){ { "game.gbc", 9 }, { NULL, 0 } }), "a zip with a comment");
 	memset(what, 'd', 250);
 	strcpy(what + 250, "/game.gbc");
-	ck(rom_is("a.zip", 0, what), "a zip whose entry has a long path");
+	ck(rom_is("a.zip", 0, (zentry[]){ { what, 9 }, { NULL, 0 } }), "a zip whose entry has a long path");
 	ck(!rom_is("a.zip", 0x80, NULL) && !gbpal_rom_is_cgb("no-such-file.gbc"), "a file that is not a zip, or is not there");
 
 	printf(fails ? "%d FAILED\n" : "ALL PASS\n", fails);

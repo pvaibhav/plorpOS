@@ -83,7 +83,7 @@ carry the palette.
 **Colour correction** is the Palette row of a Game Boy Color or Game Boy
 Advance game: **Colour Corrected** (the default) draws the colours as the
 console's screen showed them, and **Uncorrected** draws them as the game stores
-them. A Color game is a ROM whose header says so, or a zip whose first entry is
+them. A Color game is a ROM whose header says so, or a zip whose largest entry is
 a `.gbc` or `.cgb` file. The row stores `palette.<TAG>.<rom file>`, and a game
 with no row plays the **Default Palette** of the Color shelf (`palettedef.GBC`,
 for a Color game on either Game Boy shelf) or the Advance shelf

@@ -54,7 +54,7 @@ int ccpal_opt(int i, const char *core, char *opt, size_t cap);
 
 /* Whether the ROM at `path` is a Game Boy Color game. A plain ROM says so in
  * byte 0x143 of its header (0x80 or 0xC0). A zip is judged by the name of its
- * first entry, .gbc or .cgb, which is read without inflating anything. */
+ * largest entry, the one diatom loads: .gbc or .cgb. Nothing is inflated. */
 int gbpal_rom_is_cgb(const char *path);
 
 #endif
