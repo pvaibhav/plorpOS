@@ -53,7 +53,7 @@ Everything below is about the full plorpOS. The Nano's guide lists what nano doe
 - **Games load super fast** - libretro emulators live in resident memory.
 - **Game switcher** to quickly access recent games from any screen. 
 - **Auto-save and resume** (configurable), **Rewind**, **fast-forward**, **Turbo mode** and other features you should expect.
-- **Fifteen shader presets**, Game Boy palettes, and Aspect, Stretch or Integer scaling.
+- **Fifteen shader presets**, Game Boy and NES palettes, and Aspect, Stretch or Integer scaling.
 - **RetroAchievements,** signed in on the device. A game's set downloads once and then works offline; unlocks made offline are sent later.
 
 - **Nintendo DS** runs full speed **on every device** thanks to **DSperate** v3.3.0 (runs under a libretro wrapper that also does the GBA slot, Rumble Pak, Guitar Grip and analog patches), with PokeDaisy DS (its Pokemon companion: Party, Dex, Map, Bag, Guide) as a per-game option.

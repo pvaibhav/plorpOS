@@ -80,6 +80,12 @@ mGBA's `mgba_gb_colors_preset` and `mgba_gb_colors`) after the core options
 above, so a game keeps its palette when its Core changes. A save state does not
 carry the palette.
 
+**NES palettes** are per game on the NES shelf. The in-game menu's Palette row
+stores `palette.NES.<rom file>`, and a game with no row plays the shelf menu's
+**Default Palette** (`palettedef.NES`, **Default** until set). The list is
+FCEUmm's, without Raw and Custom, and each launch sends the game's palette as
+`fceumm_palette`.
+
 **Display defaults and per-game overrides.** The shelf menu's **Default Display
 Mode** (the DS's **Default Layout** and **Default Display**) and **Default
 Shader** are the shelf's (`display.<TAG>`, `shader.<TAG>`, `dsfill`); the in-game

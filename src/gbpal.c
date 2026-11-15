@@ -71,3 +71,58 @@ int gbpal_opts(int i, int gambatte, char *preset, size_t pcap, char *colors, siz
 	}
 	return a > 0 && (size_t)a < pcap && b > 0 && (size_t)b < ccap;
 }
+
+/* The values are the ones FCEUmm declares for fceumm_palette. The Flip's build
+ * (libretro-fceumm e0f3086) and the prebuilt core the other ports ship declare
+ * the same ones. The labels are the core's own, shortened to fit the menu. The
+ * core reads the option as the game runs, so a choice shows on Continue. */
+static const struct { const char *label, *value; } NES[NESPAL_COUNT] = {
+	{ "Default",              "default" },
+	{ "ASQ Real",             "asqrealc" },
+	{ "Restored Wii VC",      "restored-wii-vc" },
+	{ "Wii VC",               "wii-vc" },
+	{ "Nintendo RGB",         "rgb" },
+	{ "FBX YUV-V3",           "yuv-v3" },
+	{ "FBX Unsaturated",      "unsaturated-final" },
+	{ "Sony CXA2025AS",       "sony-cxa2025as-us" },
+	{ "PAL",                  "pal" },
+	{ "BMF Final 2",          "bmf-final2" },
+	{ "BMF Final 3",          "bmf-final3" },
+	{ "FBX Smooth",           "smooth-fbx" },
+	{ "FBX Composite Direct", "composite-direct-fbx" },
+	{ "FBX PVM D93",          "pvm-style-d93-fbx" },
+	{ "FBX NTSC Hardware",    "ntsc-hardware-fbx" },
+	{ "FBX NES Classic FS",   "nes-classic-fbx-fs" },
+	{ "NESCAP",               "nescap" },
+	{ "Wavebeam",             "wavebeam" },
+	{ "FBX Digital Prime",    "digital-prime-fbx" },
+	{ "FBX Magnum",           "magnum-fbx" },
+	{ "FBX Smooth V2",        "smooth-v2-fbx" },
+	{ "FBX NES Classic",      "nes-classic-fbx" },
+	{ "Royaltea",             "royaltea" },
+	{ "Mugicha",              "mugicha" },
+};
+
+const char *nespal_label(int i)
+{
+	return i >= 0 && i < NESPAL_COUNT ? NES[i].label : NES[0].label;
+}
+
+int nespal_find(const char *label)
+{
+	int i;
+
+	if (!label) return 0;
+	for (i = 0; i < NESPAL_COUNT; i++)
+		if (!strcmp(NES[i].label, label)) return i;
+	return 0;
+}
+
+int nespal_opt(int i, char *opt, size_t cap)
+{
+	int a;
+
+	if (i < 0 || i >= NESPAL_COUNT) i = 0;
+	a = snprintf(opt, cap, "fceumm_palette=%s", NES[i].value);
+	return a > 0 && (size_t)a < cap;
+}

@@ -27,6 +27,16 @@ static const char *const MGBA[] = {
 	"GBC Gray ←B", "GBC Green →", "GBC Dark Green →A", "GBC Reverse →B",
 };
 
+/* The values libretro-fceumm e0f3086 (the Flip's build) declares for
+ * fceumm_palette. The prebuilt core the other ports ship has every one of
+ * them as a string. */
+static const char *const FCEUMM[] = {
+	"default", "asqrealc", "restored-wii-vc", "wii-vc", "rgb", "yuv-v3", "unsaturated-final",
+	"sony-cxa2025as-us", "pal", "bmf-final2", "bmf-final3", "smooth-fbx", "composite-direct-fbx",
+	"pvm-style-d93-fbx", "ntsc-hardware-fbx", "nes-classic-fbx-fs", "nescap", "wavebeam",
+	"digital-prime-fbx", "magnum-fbx", "smooth-v2-fbx", "nes-classic-fbx", "royaltea", "mugicha",
+};
+
 static int declared(const char *v)
 {
 	size_t i;
@@ -77,6 +87,24 @@ int main(void)
 		ck(declared(c + strlen("mgba_gb_colors=")) && gbpal_find(gbpal_label(i)) == i, what);
 		for (j = 0; j < i; j++)
 			if (!strcmp(gbpal_label(i), gbpal_label(j))) dup++;
+	}
+	ck(dup == 0, "no two labels alike");
+
+	printf("NES:\n");
+	ck(nespal_find(NULL) == 0 && nespal_find("GB Pocket") == 0 && !strcmp(nespal_label(0), "Default"),
+	   "nothing, or a label not listed, is Default");
+	ck(nespal_opt(0, p, sizeof p) && !strcmp(p, "fceumm_palette=default"), "Default is the core's own");
+	ck(!nespal_opt(1, p, 8), "too small does not fit");
+	for (i = 0, dup = 0; i < NESPAL_COUNT; i++) {
+		size_t k, hit = 0;
+
+		nespal_opt(i, p, sizeof p);
+		for (k = 0; k < sizeof FCEUMM / sizeof FCEUMM[0]; k++)
+			if (!strcmp(FCEUMM[k], p + strlen("fceumm_palette="))) hit = 1;
+		snprintf(what, sizeof what, "%-20s %s", nespal_label(i), p + strlen("fceumm_palette="));
+		ck(hit && nespal_find(nespal_label(i)) == i, what);
+		for (j = 0; j < i; j++)
+			if (!strcmp(nespal_label(i), nespal_label(j))) dup++;
 	}
 	ck(dup == 0, "no two labels alike");
 
