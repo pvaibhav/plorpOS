@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 /* Values exactly as mgba 0.11 declares mgba_gb_colors - arrows and all, they
  * are the buttons held at a Game Boy Color's boot - and labels without the
@@ -125,4 +126,79 @@ int nespal_opt(int i, char *opt, size_t cap)
 	if (i < 0 || i >= NESPAL_COUNT) i = 0;
 	a = snprintf(opt, cap, "fceumm_palette=%s", NES[i].value);
 	return a > 0 && (size_t)a < cap;
+}
+
+/* Each core's colour correction option, with the value that turns it on and
+ * the one that turns it off. PokeDaisy's cores carry the options of the
+ * emulator under them: mGBA's on the Game Boy shelves, armGBA's on the Game Boy
+ * Advance shelf. mGBA's Auto corrects for the console the game runs on. Read
+ * from the cores: Gambatte and gpSP are the Flip's builds, armGBA is v1.6. */
+static const struct { const char *core, *key, *on, *off; } CC[] = {
+	{ "gambatte",      "gambatte_gbc_color_correction", "GBC only", "disabled" },
+	{ "gpsp",          "gpsp_color_correction",         "enabled",  "disabled" },
+	{ "armgba",        "armgba_color_correction",       "enabled",  "disabled" },
+	{ "pokedaisy_gba", "armgba_color_correction",       "enabled",  "disabled" },
+	{ "mgba",          "mgba_color_correction",         "Auto",     "OFF" },
+	{ "pokedaisy_gbc", "mgba_color_correction",         "Auto",     "OFF" },
+};
+
+static const char *const CC_LABEL[CCPAL_COUNT] = { "Colour Corrected", "Uncorrected" };
+
+const char *ccpal_label(int i)
+{
+	return CC_LABEL[i == 1];
+}
+
+int ccpal_find(const char *label)
+{
+	return label && !strcmp(label, CC_LABEL[1]);
+}
+
+int ccpal_opt(int i, const char *core, char *opt, size_t cap)
+{
+	size_t k;
+	int a;
+
+	for (k = 0; k < sizeof CC / sizeof CC[0]; k++) {
+		if (strcmp(CC[k].core, core)) continue;
+		a = snprintf(opt, cap, "%s=%s", CC[k].key, i == 1 ? CC[k].off : CC[k].on);
+		if (a > 0 && (size_t)a < cap) return 1;
+		break;
+	}
+	if (cap) opt[0] = '\0';
+	return 0;
+}
+
+static int ext_is(const char *name, size_t n, const char *ext)
+{
+	size_t e = strlen(ext);
+
+	return n > e && !strncasecmp(name + n - e, ext, e);
+}
+
+int gbpal_rom_is_cgb(const char *path)
+{
+	size_t n = strlen(path);
+	unsigned char h[30], b = 0;
+	char name[256];
+	FILE *f;
+
+	if (ext_is(path, n, ".zip")) {
+		size_t len = 0;
+
+		/* A zip opens with its first entry's header: the name's length at 26, the name at 30. */
+		if (!(f = fopen(path, "rb"))) return 0;
+		if (fread(h, 1, sizeof h, f) == sizeof h && !memcmp(h, "PK\3\4", 4)) {
+			len = h[26] | (size_t)h[27] << 8;
+			if (len >= sizeof name || fread(name, 1, len, f) != len) len = 0;
+		}
+		fclose(f);
+		return ext_is(name, len, ".gbc") || ext_is(name, len, ".cgb");
+	}
+	if (!ext_is(path, n, ".gb") && !ext_is(path, n, ".gbc") && !ext_is(path, n, ".cgb") && !ext_is(path, n, ".dmg"))
+		return 0;
+	if (!(f = fopen(path, "rb"))) return 0;
+	if (fseek(f, 0x143, SEEK_SET) != 0 || fread(&b, 1, 1, f) != 1) b = 0;
+	fclose(f);
+	return b == 0x80 || b == 0xC0;
 }

@@ -118,10 +118,14 @@ static const db_default library_defaults[] = {
 	 * tagged entry overrides a global of the same name. */
 	{ "coreopt..mgba_sgb_borders",  "OFF" },
 	{ "coreopt.GB.mgba_gb_model",   "Game Boy" },
-	/* The Game Boy and Color shelves' core is Gambatte (plorpos-f1p.77, plorpos-ssa). Its own default corrects GBC
-	 * colors; the picture mgba drew was uncorrected, so that stays. The palette is sent at every launch
+	/* Frame blending for the Game Boy, Color and Advance shelves. Each frame is drawn as an even mix of itself
+	 * and the one before, as the consoles' slow screens showed them. Games that flicker a sprite to make it
+	 * look transparent count on that. Gambatte, mGBA and the Flip's gpSP each have such a mix and get a row.
+	 * armGBA has none. Colour correction has no row here. It is the game's Palette row, sent at every launch
 	 * (palette.<TAG>.<file>). */
-	{ "coreopt..gambatte_gbc_color_correction", "disabled" },
+	{ "coreopt..gambatte_mix_frames",       "mix" },
+	{ "coreopt..mgba_interframe_blending",  "mix" },
+	{ "coreopt..gpsp_frame_mixing",         "enabled" },
 	/* snes9x2010 ships with frameskip disabled. Star Fox (Super FX) runs at
 	 * 91.6% on the Flip without it; auto drops only the drawing of a late
 	 * frame, never emulation or the Super FX clock (plorpos-f1p.28). */
