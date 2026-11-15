@@ -66,6 +66,7 @@ static int rom_is(const char *name, unsigned char flag, const char *entry)
 	if (entry) {
 		memcpy(h, "PK\3\4", 4);
 		h[26] = (unsigned char)strlen(entry);
+		h[27] = (unsigned char)(strlen(entry) >> 8);
 		fwrite(h, 1, 30, f);
 		fwrite(entry, 1, strlen(entry), f);
 	} else {
@@ -89,7 +90,7 @@ static int declared(const char *v)
 
 int main(void)
 {
-	char p[64], c[64], what[128];
+	char p[64], c[64], what[300];
 	int i, j, dup = 0;
 
 	printf("lookup:\n");
@@ -164,7 +165,10 @@ int main(void)
 	ck(rom_is("plain.gbc", 0x80, NULL) && rom_is("plain.gb", 0xC0, NULL), "a plain ROM with the Color flag");
 	ck(!rom_is("plain.gb", 0x00, NULL), "a plain ROM without it");
 	ck(rom_is("a.zip", 0, "Game (USA).gbc") && rom_is("a.zip", 0, "GAME.CGB"), "a zip whose entry is .gbc or .cgb");
-	ck(!rom_is("a.zip", 0, "Game (World).gb"), "a zip whose entry is .gb");
+	ck(!rom_is("a.zip", 0, "Game (World).gb") && !rom_is("a.zip", 0, ".gbc"), "a zip whose entry is .gb, or has no name before .gbc");
+	memset(what, 'd', 250);
+	strcpy(what + 250, "/game.gbc");
+	ck(rom_is("a.zip", 0, what), "a zip whose entry has a long path");
 	ck(!rom_is("a.zip", 0x80, NULL) && !gbpal_rom_is_cgb("no-such-file.gbc"), "a file that is not a zip, or is not there");
 
 	printf(fails ? "%d FAILED\n" : "ALL PASS\n", fails);

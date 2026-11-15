@@ -180,20 +180,24 @@ int gbpal_rom_is_cgb(const char *path)
 {
 	size_t n = strlen(path);
 	unsigned char h[30], b = 0;
-	char name[256];
 	FILE *f;
 
 	if (ext_is(path, n, ".zip")) {
-		size_t len = 0;
+		char end[4];
+		size_t len;
+		int cgb = 0;
 
-		/* A zip opens with its first entry's header: the name's length at 26, the name at 30. */
+		/* A zip opens with its first entry's header: the name's length at 26, the name at 30. Its last four
+		 * bytes are the extension. */
 		if (!(f = fopen(path, "rb"))) return 0;
 		if (fread(h, 1, sizeof h, f) == sizeof h && !memcmp(h, "PK\3\4", 4)) {
 			len = h[26] | (size_t)h[27] << 8;
-			if (len >= sizeof name || fread(name, 1, len, f) != len) len = 0;
+			if (len > sizeof end && !fseek(f, (long)(len - sizeof end), SEEK_CUR) &&
+			    fread(end, 1, sizeof end, f) == sizeof end)
+				cgb = !strncasecmp(end, ".gbc", sizeof end) || !strncasecmp(end, ".cgb", sizeof end);
 		}
 		fclose(f);
-		return ext_is(name, len, ".gbc") || ext_is(name, len, ".cgb");
+		return cgb;
 	}
 	if (!ext_is(path, n, ".gb") && !ext_is(path, n, ".gbc") && !ext_is(path, n, ".cgb") && !ext_is(path, n, ".dmg"))
 		return 0;

@@ -820,17 +820,22 @@ static void palette_default_save(const char *tag, int i)
 	db_set_str(db_lib(), key, pal_label(shelf_pal_list(tag), i));
 }
 
-/* The game's entry in `*list`, which is PAL_NONE (and the result -1) on a shelf with no Palette row. */
+/* The game's entry in `*list`, which is PAL_NONE (and the result -1) on a shelf with no Palette row. A row holding
+ * a label from another list counts as no row: a zipped Color game could store a Game Boy palette before zips were
+ * told apart. */
 static int palette_of(app *a, int sys, const game_entry *g, pal_list *list)
 {
 	char key[LIB_PATH + 32], name[CFG_STR];
 	const char *base, *from = palette_shelf(a, sys, g);
+	int i;
 
 	*list = shelf_pal_list(from);
 	if (*list == PAL_NONE) return -1;
 	base = strrchr(g->file, '/');
 	snprintf(key, sizeof key, "palette.%s.%s", a->sys.systems[sys].tag, base ? base + 1 : g->file);
-	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? pal_find(*list, name) : palette_default_of(from);
+	if (!db_get_str(db_lib(), key, name, sizeof name, NULL)) return palette_default_of(from);
+	i = pal_find(*list, name);
+	return strcmp(pal_label(*list, i), name) ? palette_default_of(from) : i;
 }
 
 static void palette_save(const char *tag, const game_entry *g, pal_list list, int i)
