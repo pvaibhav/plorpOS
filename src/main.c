@@ -756,46 +756,59 @@ static void game_fill_save(app *a, int sys, const game_entry *g, int v)
 /* palette.<TAG>.<file>, in the library database: a choice per game rather than
  * per system (plorpos-gkd.76), so it travels with the card the way favorites
  * do. Keyed on the file name, as save states are, so renaming a ROM loses it.
- * -1 for a game that has no palette to pick; no row is the shelf's Default
- * Palette (palettedef.<TAG>), or Auto where there is none. A game
+ * -1 for a game that has no palette to pick; no row is the Default Palette
+ * (palettedef.<TAG>), or the list's first entry where there is none. A game
  * that has a row keeps it however the default changes later. */
 static bool gb_palette_tag(const char *tag)
 {
 	return !strcmp(tag, "GB") || !strcmp(tag, "GBC");
 }
 
-/* The NES shelf has a Palette row too. Its list is FCEUmm's (gbpal.h). */
-static bool nes_palette_tag(const char *tag) { return !strcmp(tag, "NES"); }
-static bool palette_tag(const char *tag) { return gb_palette_tag(tag) || nes_palette_tag(tag); }
+/* The list a Palette row offers (gbpal.h). A Game Boy game picks its shades and a NES game its palette. A Game Boy
+ * Color or Advance game draws its own colours, so it picks the core's colour correction, on or off. */
+typedef enum { PAL_NONE, PAL_GB, PAL_CC, PAL_NES } pal_list;
 
-/* Each of these reads the list of the shelf that `tag` names. */
-static int pal_count(const char *tag) { return nes_palette_tag(tag) ? NESPAL_COUNT : GBPAL_COUNT; }
-static const char *pal_label(const char *tag, int i) { return nes_palette_tag(tag) ? nespal_label(i) : gbpal_label(i); }
-static int pal_find(const char *tag, const char *label) { return nes_palette_tag(tag) ? nespal_find(label) : gbpal_find(label); }
-
-/* The core options that make entry i on this shelf. A Game Boy core takes two. FCEUmm takes one, and `colors` comes back empty. */
-static bool pal_opts(const char *tag, int i, bool gambatte, char *preset, size_t pcap, char *colors, size_t ccap)
+/* The list a shelf's Default Palette row offers. */
+static pal_list shelf_pal_list(const char *tag)
 {
-	if (!nes_palette_tag(tag)) return gbpal_opts(i, gambatte, preset, pcap, colors, ccap);
-	colors[0] = '\0';
-	return nespal_opt(i, preset, pcap);
+	if (!strcmp(tag, "GB")) return PAL_GB;
+	if (!strcmp(tag, "GBC") || !strcmp(tag, "GBA")) return PAL_CC;
+	if (!strcmp(tag, "NES")) return PAL_NES;
+	return PAL_NONE;
 }
 
-/* A Game Boy Color game colors itself: byte 0x143 of a plain ROM is 0x80 or 0xC0. Only a game that
- * has none has a palette to pick (a zipped ROM is taken to be one that has). */
-static bool rom_is_cgb(const char *path)
-{
-	size_t n = strlen(path);
-	unsigned char b = 0;
-	FILE *f;
+static bool palette_tag(const char *tag) { return shelf_pal_list(tag) != PAL_NONE; }
 
-	if (n < 4 || (strcasecmp(path + n - 3, ".gb") && strcasecmp(path + n - 4, ".gbc") &&
-	              strcasecmp(path + n - 4, ".cgb") && strcasecmp(path + n - 4, ".dmg")))
-		return false;
-	if (!(f = fopen(path, "rb"))) return false;
-	if (fseek(f, 0x143, SEEK_SET) != 0 || fread(&b, 1, 1, f) != 1) b = 0;
-	fclose(f);
-	return b == 0x80 || b == 0xC0;
+static int pal_count(pal_list l) { return l == PAL_NES ? NESPAL_COUNT : l == PAL_CC ? CCPAL_COUNT : GBPAL_COUNT; }
+static const char *pal_label(pal_list l, int i) { return l == PAL_NES ? nespal_label(i) : l == PAL_CC ? ccpal_label(i) : gbpal_label(i); }
+static int pal_find(pal_list l, const char *label) { return l == PAL_NES ? nespal_find(label) : l == PAL_CC ? ccpal_find(label) : gbpal_find(label); }
+
+/* The core options that make entry i of a list on `core`. A Game Boy palette takes two. The other lists take one, and
+ * `colors` comes back empty. */
+static bool pal_opts(pal_list l, int i, const char *core, char *preset, size_t pcap, char *colors, size_t ccap)
+{
+	if (l == PAL_GB) return gbpal_opts(i, !strcmp(core, "gambatte"), preset, pcap, colors, ccap);
+	colors[0] = '\0';
+	return l == PAL_CC ? ccpal_opt(i, core, preset, pcap) : nespal_opt(i, preset, pcap);
+}
+
+/* The shelf whose list and Default Palette a game follows. That is its own, except on the two Game Boy shelves, which
+ * hold each other's games: there a Color game follows the Color shelf and any other the Game Boy shelf. */
+static const char *palette_shelf(app *a, int sys, const game_entry *g)
+{
+	const char *tag = a->sys.systems[sys].tag;
+	/* The last answer is kept: the in-game menu asks every frame, and each answer opens the file. */
+	static char seen[LIB_PATH * 2];
+	static bool seen_cgb;
+	char rom[LIB_PATH * 2];
+
+	if (!gb_palette_tag(tag)) return tag;
+	snprintf(rom, sizeof rom, "%s/%s/%s", P_ROMS, a->sys.systems[sys].folder, g->file);
+	if (strcmp(rom, seen) != 0) {
+		seen_cgb = gbpal_rom_is_cgb(rom);
+		snprintf(seen, sizeof seen, "%s", rom);
+	}
+	return seen_cgb ? "GBC" : "GB";
 }
 
 static int palette_default_of(const char *tag)
@@ -803,7 +816,7 @@ static int palette_default_of(const char *tag)
 	char key[40], name[CFG_STR];
 
 	snprintf(key, sizeof key, "palettedef.%s", tag);
-	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? pal_find(tag, name) : 0;
+	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? pal_find(shelf_pal_list(tag), name) : 0;
 }
 
 static void palette_default_save(const char *tag, int i)
@@ -811,37 +824,38 @@ static void palette_default_save(const char *tag, int i)
 	char key[40];
 
 	snprintf(key, sizeof key, "palettedef.%s", tag);
-	db_set_str(db_lib(), key, pal_label(tag, i));
+	db_set_str(db_lib(), key, pal_label(shelf_pal_list(tag), i));
 }
 
-static int palette_of(app *a, int sys, const game_entry *g)
+/* The game's entry in `*list`, which is PAL_NONE (and the result -1) on a shelf with no Palette row. A row holding
+ * a label from another list counts as no row: a zipped Color game could store a Game Boy palette before zips were
+ * told apart. */
+static int palette_of(app *a, int sys, const game_entry *g, pal_list *list)
 {
 	char key[LIB_PATH + 32], name[CFG_STR];
-	const char *base, *tag = a->sys.systems[sys].tag;
+	const char *base, *from = palette_shelf(a, sys, g);
+	int i;
 
-	if (!palette_tag(tag)) return -1;
-	if (gb_palette_tag(tag)) {
-		char rom[LIB_PATH * 2];
-
-		snprintf(rom, sizeof rom, "%s/%s/%s", P_ROMS, a->sys.systems[sys].folder, g->file);
-		if (rom_is_cgb(rom)) return -1;
-	}
+	*list = shelf_pal_list(from);
+	if (*list == PAL_NONE) return -1;
 	base = strrchr(g->file, '/');
-	snprintf(key, sizeof key, "palette.%s.%s", tag, base ? base + 1 : g->file);
-	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? pal_find(tag, name) : palette_default_of(tag);
+	snprintf(key, sizeof key, "palette.%s.%s", a->sys.systems[sys].tag, base ? base + 1 : g->file);
+	if (!db_get_str(db_lib(), key, name, sizeof name, NULL)) return palette_default_of(from);
+	i = pal_find(*list, name);
+	return strcmp(pal_label(*list, i), name) ? palette_default_of(from) : i;
 }
 
-static void palette_save(const char *tag, const game_entry *g, int i)
+static void palette_save(const char *tag, const game_entry *g, pal_list list, int i)
 {
 	char key[LIB_PATH + 32];
 	const char *base = strrchr(g->file, '/');
 
 	snprintf(key, sizeof key, "palette.%s.%s", tag, base ? base + 1 : g->file);
-	db_set_str(db_lib(), key, pal_label(tag, i));
+	db_set_str(db_lib(), key, pal_label(list, i));
 }
 
-/* The shelf menu's one optional row, SM_FILL's place: the DS's Display, or a Game Boy or NES shelf's
- * Default Palette. */
+/* The shelf menu's one optional row, SM_FILL's place: the DS's Display, or the Default Palette of a shelf
+ * that has one. */
 static bool sm_extra_shown(const char *tag)
 {
 	return ds_fill_shown(tag) || palette_tag(tag);
@@ -6557,7 +6571,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.dmode      = DMODES[a->view[sys].dmode].label;
 		u.nds        = is_nds_tag(sc->tag);
 		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
-		u.palette    = palette_tag(sc->tag) ? pal_label(sc->tag, palette_default_of(sc->tag)) : NULL;
+		u.palette    = palette_tag(sc->tag) ? pal_label(shelf_pal_list(sc->tag), palette_default_of(sc->tag)) : NULL;
 		u.overrides  = !is_ports(sc);
 		u.engine     = engine_label(a, sys);
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
@@ -6759,7 +6773,7 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 }
 
 /* Reset Display Overrides (plorpos-36e): every game of a shelf back to its defaults - the rows the in-game menu
- * wrote (display/shader/dsfill/dsswap/scaling.<TAG>.<file>, and a Game Boy shelf's palette.<TAG>.<file>). The defaults
+ * wrote (display/shader/dsfill/dsswap/scaling.<TAG>.<file>, and palette.<TAG>.<file> on a shelf with a Palette row). The defaults
  * themselves stay. Asked first, No selected. */
 static void display_overrides_reset(app *a, int sys)
 {
@@ -9252,9 +9266,9 @@ static int menu_shelf_width(app *a)
 			if (mw > w) w = mw;
 		}
 #endif
-		for (k = 0; !own && palette_tag(a->sys.systems[i].tag) && k < pal_count(a->sys.systems[i].tag); k++) {
+		for (k = 0; !own && palette_tag(a->sys.systems[i].tag) && k < pal_count(shelf_pal_list(a->sys.systems[i].tag)); k++) {
 			int mw;
-			rows[SM_FILL].value = pal_label(a->sys.systems[i].tag, k);
+			rows[SM_FILL].value = pal_label(shelf_pal_list(a->sys.systems[i].tag), k);
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
 		}
@@ -9956,11 +9970,13 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		/* The DS's Display: left and right step it, A steps forward, saved
 		 * at once. */
 		if (sel == SM_FILL && (d || key == IN_ACCEPT)) {
-			/* A Game Boy or NES shelf's Default Palette: left and right step the list, A opens it. */
+			/* A shelf's Default Palette: left and right step the list and A opens it. A list of two has nothing
+			 * to open, so A steps it too. */
 			if (palette_tag(a->sys.systems[a->sys_cursor].tag)) {
 				const char *tg = a->sys.systems[a->sys_cursor].tag;
+				int n = pal_count(shelf_pal_list(tg));
 
-				if (d) palette_default_save(tg, (palette_default_of(tg) + d + pal_count(tg)) % pal_count(tg));
+				if (d || n == 2) palette_default_save(tg, (palette_default_of(tg) + (d ? d : 1) + n) % n);
 				else default_palette_screen(a, a->sys_cursor);
 				return MENU_STAY;
 			}
@@ -11027,8 +11043,9 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	{
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
-		int pal = palette_of(a, o, &sv->list.items[sv->cursor]);
-		u.palette = pal < 0 ? NULL : pal_label(a->sys.systems[o].tag, pal);
+		pal_list list;
+		int pal = palette_of(a, o, &sv->list.items[sv->cursor], &list);
+		u.palette = pal < 0 ? NULL : pal_label(list, pal);
 	}
 	u.stylus = NULL;
 #if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
@@ -14372,7 +14389,6 @@ static int gm_width(app *a)
 {
 	menu_row rows[GM_ROWS];
 	gm_bufs b;
-	const char *ptag;
 	int w = 0, k;
 
 	gm_build(a, rows, &b);
@@ -14410,12 +14426,17 @@ static int gm_width(app *a)
 		if (mw > w) w = mw;
 	}
 #endif
-	ptag = a->sys.systems[shelf_owner(a, a->sys_cursor, a->view[a->sys_cursor].cursor)].tag;
-	for (k = 0; rows[GM_PALETTE].live && k < pal_count(ptag); k++) {
-		int mw;
-		rows[GM_PALETTE].value = pal_label(ptag, k);
-		mw = gm_measure(rows);
-		if (mw > w) w = mw;
+	if (rows[GM_PALETTE].live) {
+		sysview *sv = &a->view[a->sys_cursor];
+		pal_list list;
+
+		palette_of(a, shelf_owner(a, a->sys_cursor, sv->cursor), &sv->list.items[sv->cursor], &list);
+		for (k = 0; k < pal_count(list); k++) {
+			int mw;
+			rows[GM_PALETTE].value = pal_label(list, k);
+			mw = gm_measure(rows);
+			if (mw > w) w = mw;
+		}
 	}
 	for (k = 0; k < g_disc.count && rows[GM_DISC].live; k++) {
 		char l[16];
@@ -14779,30 +14800,44 @@ static void shelf_shader_screen(app *a, int sys)
 	menu_run(a, &st, sh_build, shs_key, &c);
 }
 
-/* The in-game Palette list (plorpos-gkd.76), a Game Boy game's own. Same
- * shape as the Shader list above, but kept per game. */
+/* The in-game Palette list (plorpos-gkd.76), a game's own. Same shape as the
+ * Shader list above, but kept per game. */
 typedef struct {
 	gm_ctx           *gm;
 	const game_entry *g;
 	int               cur;
 	const char       *tag;
-	bool              gambatte; /* the game's core, whose options carry the palette */
+	pal_list          list;
+	const char       *core; /* the game's core, whose options carry the palette */
 } pal_ctx;
+
+/* The game under the in-game menu. `cur` is -1 where it has no Palette row. */
+static pal_ctx pal_game(app *a, gm_ctx *gm)
+{
+	sysview *sv = &a->view[a->sys_cursor];
+	int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+	pal_ctx c = { .gm = gm, .g = &sv->list.items[sv->cursor], .tag = a->sys.systems[o].tag,
+	              .core = shelf_core(a, o, sv->list.items[sv->cursor].file) };
+
+	c.cur = palette_of(a, o, c.g, &c.list);
+	return c;
+}
 
 static int pal_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
 	pal_ctx *c = ctx;
-	int i, n = pal_count(c->tag) < max ? pal_count(c->tag) : max;
+	int i, n = pal_count(c->list) < max ? pal_count(c->list) : max;
 
 	for (i = 0; i < n; i++)
-		rows[i] = (menu_row){ pal_label(c->tag, i), i == c->cur ? "Current" : NULL, true };
+		rows[i] = (menu_row){ pal_label(c->list, i), i == c->cur ? "Current" : NULL, true };
 	*heading = "Palette";
 	return n;
 }
 
-/* A sends it to the paused game and keeps it for this game. mgba reads the
- * palette as the game runs, so a fixed one shows on Continue; Auto's per-game
- * colours wait for the next launch (gbpal.c). No answer is waited for: an
+/* A sends it to the paused game and keeps it for this game. The cores read
+ * these options as the game runs, so a choice shows on Continue. A Game Boy
+ * game's Auto is the exception: its per-game colours wait for the next launch
+ * (gbpal.c). No answer is waited for: an
  * option diatom does not take is logged by it, and the choice is still the
  * player's for the next launch. */
 static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
@@ -14813,12 +14848,12 @@ static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
 	(void)a;
 	if (key != IN_ACCEPT) return MENU_STAY;
 	/* Kept even when it is the one showing: a game that has chosen keeps it when the shelf's default changes. */
-	if (sel != c->cur && pal_opts(c->tag, sel, c->gambatte, p, sizeof p, col, sizeof col)) {
+	if (sel != c->cur && pal_opts(c->list, sel, c->core, p, sizeof p, col, sizeof col)) {
 		char *eq;
 		eq = strchr(p, '=');   plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - p), p, eq + 1);
 		if (col[0]) { eq = strchr(col, '='); plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - col), col, eq + 1); }
 	}
-	palette_save(c->tag, c->g, sel);
+	palette_save(c->tag, c->g, c->list, sel);
 	return MENU_DONE;
 }
 
@@ -14827,13 +14862,9 @@ static menu_result pal_power(app *a, void *ctx) { return gm_power(a, ((pal_ctx *
 
 static void palette_screen(app *a, gm_ctx *gm)
 {
-	sysview *sv = &a->view[a->sys_cursor];
-	int o = shelf_owner(a, a->sys_cursor, sv->cursor);
-	pal_ctx c = { gm, &sv->list.items[sv->cursor], 0, a->sys.systems[o].tag,
-	              !strcmp(shelf_core(a, o, sv->list.items[sv->cursor].file), "gambatte") };
+	pal_ctx c = pal_game(a, gm);
 	menu_style st = gm->st;
 
-	c.cur = palette_of(a, o, c.g);
 	if (c.cur < 0) return;
 	st.fixed_w  = 0;
 	st.backdrop = pal_backdrop;
@@ -14842,7 +14873,7 @@ static void palette_screen(app *a, gm_ctx *gm)
 	menu_run(a, &st, pal_build, pal_key, &c);
 }
 
-/* A Game Boy shelf's Default Palette, from its system menu (the Flip's, plorpos-f1p.77; every port's, plorpos-ktq): the in-game Palette's list, kept for the
+/* A shelf's Default Palette, from its system menu (the Flip's, plorpos-f1p.77; every port's, plorpos-ktq): the in-game Palette's list, kept for the
  * shelf. Only a game that has not chosen its own follows it. A keeps the choice; the next launch
  * draws with it. */
 typedef struct { app *a; int sys; } dp_ctx;
@@ -14851,10 +14882,11 @@ static int dp_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
 	dp_ctx *c = ctx;
 	const char *tag = c->a->sys.systems[c->sys].tag;
-	int i, cur = palette_default_of(tag), n = pal_count(tag) < max ? pal_count(tag) : max;
+	pal_list list = shelf_pal_list(tag);
+	int i, cur = palette_default_of(tag), n = pal_count(list) < max ? pal_count(list) : max;
 
 	for (i = 0; i < n; i++)
-		rows[i] = (menu_row){ pal_label(tag, i), i == cur ? "Current" : NULL, true };
+		rows[i] = (menu_row){ pal_label(list, i), i == cur ? "Current" : NULL, true };
 	*heading = "Default Palette";
 	return n;
 }
@@ -14994,6 +15026,15 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 #endif
+	/* A Palette list of two, colour correction: left, right and A turn it over. A longer list opens on A, below. */
+	if (sel == GM_PALETTE && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		pal_ctx pc = pal_game(a, c);
+
+		if (pc.cur >= 0 && pal_count(pc.list) == 2) {
+			pal_key(a, &pc, IN_ACCEPT, !pc.cur);
+			return MENU_STAY;
+		}
+	}
 	/* The DS's Display (plorpos-6ei.13): to the running game at once, as
 	 * Layout is, so it is judged against the game it is for. */
 	if (sel == GM_FILL && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
@@ -16123,12 +16164,13 @@ static void launch_one(app *a)
 	const char *romfile = v->list.items[v->cursor].file;
 
 	snprintf(rom, sizeof rom, "%s/%s/%s", P_ROMS, s->folder, romfile);
-	/* A Game Boy game always says its palette, Auto included, so a value an
-	 * older card stored for the whole system cannot decide it. A NES game sends its palette at every launch too. */
+	/* A game with a Palette row says its choice at every launch, the default included, so a value an
+	 * older card stored for the whole system cannot decide it. */
 	{
-		int pal = palette_of(a, o, &v->list.items[v->cursor]);
-		if (pal >= 0) pal_opts(a->sys.systems[o].tag, pal, !strcmp(shelf_core(a, o, romfile), "gambatte"),
-		                       palp, sizeof palp, palc, sizeof palc);
+		pal_list list;
+		int pal = palette_of(a, o, &v->list.items[v->cursor], &list);
+
+		if (pal >= 0) pal_opts(list, pal, shelf_core(a, o, romfile), palp, sizeof palp, palc, sizeof palc);
 	}
 	disc = disc_of(a, o, &v->list.items[v->cursor]);
 	/* Each shelf's saves in a folder named as its Roms folder, so the same

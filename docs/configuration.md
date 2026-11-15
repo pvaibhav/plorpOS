@@ -68,17 +68,36 @@ for one core is harmless everywhere else. They are sent **before** the game
 loads, because a core reads its `(Restart)` options during load and one set
 afterwards does nothing until the next launch.
 
-**Game Boy palettes** are per game on the Game Boy and Color shelves (the Color
-shelf's original Game Boy games only): the in-game menu's Palette row stores
+**Game Boy palettes** are per game, for the original Game Boy games on the Game
+Boy and Color shelves: the in-game menu's Palette row stores
 `palette.<TAG>.<rom file>` (the label, e.g. `GB Pocket`), and a game with no row
-plays the shelf menu's **Default Palette** (`palettedef.<TAG>`, **Auto** until
-set) - Auto is what a Game Boy Color does with nothing held, its own colours for
+plays the Game Boy shelf's **Default Palette** (`palettedef.GB`, **Auto** until
+set), whichever of the two shelves it is on - Auto is what a Game Boy Color does with nothing held, its own colours for
 the games in its boot ROM and Dark Green for the rest. The labels are one list
 for every core: each launch sends the game's palette as its core reads it
 (Gambatte's `gambatte_gb_colorization` and `gambatte_gb_internal_palette`, or
 mGBA's `mgba_gb_colors_preset` and `mgba_gb_colors`) after the core options
 above, so a game keeps its palette when its Core changes. A save state does not
 carry the palette.
+
+**Colour correction** is the Palette row of a Game Boy Color or Game Boy
+Advance game: **Colour Corrected** (the default) draws the colours as the
+console's screen showed them, and **Uncorrected** draws them as the game stores
+them. A Color game is a ROM whose header says so, or a zip whose largest entry is
+a `.gbc` or `.cgb` file. The row stores `palette.<TAG>.<rom file>`, and a game
+with no row plays the **Default Palette** of the Color shelf (`palettedef.GBC`,
+for a Color game on either Game Boy shelf) or the Advance shelf
+(`palettedef.GBA`). Each launch sends the choice as the game's core reads it:
+`gambatte_gbc_color_correction`, `mgba_color_correction`,
+`gpsp_color_correction` or `armgba_color_correction`.
+
+**Frame blending** is on for the Game Boy, Color and Advance shelves: each frame
+is drawn as an even mix of itself and the one before, which is how the
+consoles' screens showed a sprite that a game flickers to make it look
+transparent. It has no menu row. It is three core options,
+`coreopt..gambatte_mix_frames` and `coreopt..mgba_interframe_blending` (both
+`mix`) and `coreopt..gpsp_frame_mixing` (`enabled`). armGBA has no such mix, so
+a game on it is drawn unblended.
 
 **NES palettes** are per game on the NES shelf. The in-game menu's Palette row
 stores `palette.NES.<rom file>`, and a game with no row plays the shelf menu's
@@ -94,7 +113,7 @@ menu's Display, Shader and the DS's Layout and Display are the one game's
 file>`), and a DS game keeps the screen **Swap Screens** left big
 (`dsswap.<TAG>.<rom file>`), all in `tortos.db`. A game without its own plays at
 the shelf's default. The shelf menu's **Reset Display Overrides** deletes that
-shelf's per-game rows (and, on the Game Boy shelves, its per-game palettes).
+shelf's per-game rows (and, on a shelf with a Palette row, its per-game palettes).
 
 **Cores per game.** The Game Boy, Color and Advance shelves' Core row turns the
 game under the cursor to another core (`engine.<TAG>/<rom file>`): Gambatte

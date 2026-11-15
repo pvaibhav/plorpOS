@@ -91,8 +91,9 @@ as much per frame on the Flip.
 - **Palettes**: a Game Boy game takes its colours from the **Palette** row of
   the in-game menu, and the change shows at once. The shelf menu's **Default
   Palette** sets what games without their own choice use; a palette picked in
-  a game stays with that game even if the default changes later. On the Game
-  Boy Color shelf the row appears only for original Game Boy games.
+  a game stays with that game even if the default changes later. For a Game
+  Boy Color game the row is the colour correction instead, **Colour
+  Corrected** (the default) or **Uncorrected**.
 - **Saves from mGBA**: battery saves (`.srm` in `Saves/<console>/`) are plain
   cartridge memory and should load as before. Save states made with mGBA do
   not load in Gambatte.
