@@ -764,6 +764,23 @@ static bool gb_palette_tag(const char *tag)
 	return !strcmp(tag, "GB") || !strcmp(tag, "GBC");
 }
 
+/* The NES shelf has a Palette row too. Its list is FCEUmm's (gbpal.h). */
+static bool nes_palette_tag(const char *tag) { return !strcmp(tag, "NES"); }
+static bool palette_tag(const char *tag) { return gb_palette_tag(tag) || nes_palette_tag(tag); }
+
+/* Each of these reads the list of the shelf that `tag` names. */
+static int pal_count(const char *tag) { return nes_palette_tag(tag) ? NESPAL_COUNT : GBPAL_COUNT; }
+static const char *pal_label(const char *tag, int i) { return nes_palette_tag(tag) ? nespal_label(i) : gbpal_label(i); }
+static int pal_find(const char *tag, const char *label) { return nes_palette_tag(tag) ? nespal_find(label) : gbpal_find(label); }
+
+/* The core options that make entry i on this shelf. A Game Boy core takes two. FCEUmm takes one, and `colors` comes back empty. */
+static bool pal_opts(const char *tag, int i, bool gambatte, char *preset, size_t pcap, char *colors, size_t ccap)
+{
+	if (!nes_palette_tag(tag)) return gbpal_opts(i, gambatte, preset, pcap, colors, ccap);
+	colors[0] = '\0';
+	return nespal_opt(i, preset, pcap);
+}
+
 /* A Game Boy Color game colors itself: byte 0x143 of a plain ROM is 0x80 or 0xC0. Only a game that
  * has none has a palette to pick (a zipped ROM is taken to be one that has). */
 static bool rom_is_cgb(const char *path)
@@ -786,7 +803,7 @@ static int palette_default_of(const char *tag)
 	char key[40], name[CFG_STR];
 
 	snprintf(key, sizeof key, "palettedef.%s", tag);
-	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? gbpal_find(name) : 0;
+	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? pal_find(tag, name) : 0;
 }
 
 static void palette_default_save(const char *tag, int i)
@@ -794,7 +811,7 @@ static void palette_default_save(const char *tag, int i)
 	char key[40];
 
 	snprintf(key, sizeof key, "palettedef.%s", tag);
-	db_set_str(db_lib(), key, gbpal_label(i));
+	db_set_str(db_lib(), key, pal_label(tag, i));
 }
 
 static int palette_of(app *a, int sys, const game_entry *g)
@@ -802,8 +819,8 @@ static int palette_of(app *a, int sys, const game_entry *g)
 	char key[LIB_PATH + 32], name[CFG_STR];
 	const char *base, *tag = a->sys.systems[sys].tag;
 
-	if (!gb_palette_tag(tag)) return -1;
-	{
+	if (!palette_tag(tag)) return -1;
+	if (gb_palette_tag(tag)) {
 		char rom[LIB_PATH * 2];
 
 		snprintf(rom, sizeof rom, "%s/%s/%s", P_ROMS, a->sys.systems[sys].folder, g->file);
@@ -811,7 +828,7 @@ static int palette_of(app *a, int sys, const game_entry *g)
 	}
 	base = strrchr(g->file, '/');
 	snprintf(key, sizeof key, "palette.%s.%s", tag, base ? base + 1 : g->file);
-	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? gbpal_find(name) : palette_default_of(tag);
+	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? pal_find(tag, name) : palette_default_of(tag);
 }
 
 static void palette_save(const char *tag, const game_entry *g, int i)
@@ -820,14 +837,14 @@ static void palette_save(const char *tag, const game_entry *g, int i)
 	const char *base = strrchr(g->file, '/');
 
 	snprintf(key, sizeof key, "palette.%s.%s", tag, base ? base + 1 : g->file);
-	db_set_str(db_lib(), key, gbpal_label(i));
+	db_set_str(db_lib(), key, pal_label(tag, i));
 }
 
-/* The shelf menu's one optional row, SM_FILL's place: the DS's Display, or a Game Boy shelf's
+/* The shelf menu's one optional row, SM_FILL's place: the DS's Display, or a Game Boy or NES shelf's
  * Default Palette. */
 static bool sm_extra_shown(const char *tag)
 {
-	return ds_fill_shown(tag) || gb_palette_tag(tag);
+	return ds_fill_shown(tag) || palette_tag(tag);
 }
 
 /* disc.<TAG>.<file>, the disc an .m3u game was last on (plorpos-gkd.47),
@@ -6540,7 +6557,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.dmode      = DMODES[a->view[sys].dmode].label;
 		u.nds        = is_nds_tag(sc->tag);
 		u.fill       = ds_fill_shown(sc->tag) ? ds_fill_label() : NULL;
-		u.palette    = gb_palette_tag(sc->tag) ? gbpal_label(palette_default_of(sc->tag)) : NULL;
+		u.palette    = palette_tag(sc->tag) ? pal_label(sc->tag, palette_default_of(sc->tag)) : NULL;
 		u.overrides  = !is_ports(sc);
 		u.engine     = engine_label(a, sys);
 		u.shader     = a->shaders.e[a->view[sys].shader].name;
@@ -6749,7 +6766,7 @@ static void display_overrides_reset(app *a, int sys)
 	static const char *const KINDS[] = { "display", "shader", "dsfill", "dsswap", "scaling" };
 	static const char *const YES[] = { "Yes" };
 	const char *tag = a->sys.systems[sys].tag;
-	bool pal = gb_palette_tag(tag), nds = is_nds_tag(tag);
+	bool pal = palette_tag(tag), nds = is_nds_tag(tag);
 	char key[CFG_STR + 16];
 
 	if (pick_panel_ex(a, "Reset Display Overrides",
@@ -9235,9 +9252,9 @@ static int menu_shelf_width(app *a)
 			if (mw > w) w = mw;
 		}
 #endif
-		for (k = 0; !own && gb_palette_tag(a->sys.systems[i].tag) && k < GBPAL_COUNT; k++) {
+		for (k = 0; !own && palette_tag(a->sys.systems[i].tag) && k < pal_count(a->sys.systems[i].tag); k++) {
 			int mw;
-			rows[SM_FILL].value = gbpal_label(k);
+			rows[SM_FILL].value = pal_label(a->sys.systems[i].tag, k);
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
 		}
@@ -9939,11 +9956,11 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		/* The DS's Display: left and right step it, A steps forward, saved
 		 * at once. */
 		if (sel == SM_FILL && (d || key == IN_ACCEPT)) {
-			/* A Game Boy shelf's Default Palette: left and right step the list, A opens it. */
-			if (gb_palette_tag(a->sys.systems[a->sys_cursor].tag)) {
+			/* A Game Boy or NES shelf's Default Palette: left and right step the list, A opens it. */
+			if (palette_tag(a->sys.systems[a->sys_cursor].tag)) {
 				const char *tg = a->sys.systems[a->sys_cursor].tag;
 
-				if (d) palette_default_save(tg, (palette_default_of(tg) + d + GBPAL_COUNT) % GBPAL_COUNT);
+				if (d) palette_default_save(tg, (palette_default_of(tg) + d + pal_count(tg)) % pal_count(tg));
 				else default_palette_screen(a, a->sys_cursor);
 				return MENU_STAY;
 			}
@@ -11011,7 +11028,7 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
 		int pal = palette_of(a, o, &sv->list.items[sv->cursor]);
-		u.palette = pal < 0 ? NULL : gbpal_label(pal);
+		u.palette = pal < 0 ? NULL : pal_label(a->sys.systems[o].tag, pal);
 	}
 	u.stylus = NULL;
 #if !defined(PLATFORM_GKD) && !defined(PLATFORM_ROTATE)
@@ -14355,6 +14372,7 @@ static int gm_width(app *a)
 {
 	menu_row rows[GM_ROWS];
 	gm_bufs b;
+	const char *ptag;
 	int w = 0, k;
 
 	gm_build(a, rows, &b);
@@ -14392,9 +14410,10 @@ static int gm_width(app *a)
 		if (mw > w) w = mw;
 	}
 #endif
-	for (k = 0; k < GBPAL_COUNT && rows[GM_PALETTE].live; k++) {
+	ptag = a->sys.systems[shelf_owner(a, a->sys_cursor, a->view[a->sys_cursor].cursor)].tag;
+	for (k = 0; rows[GM_PALETTE].live && k < pal_count(ptag); k++) {
 		int mw;
-		rows[GM_PALETTE].value = gbpal_label(k);
+		rows[GM_PALETTE].value = pal_label(ptag, k);
 		mw = gm_measure(rows);
 		if (mw > w) w = mw;
 	}
@@ -14773,10 +14792,10 @@ typedef struct {
 static int pal_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
 	pal_ctx *c = ctx;
-	int i, n = GBPAL_COUNT < max ? GBPAL_COUNT : max;
+	int i, n = pal_count(c->tag) < max ? pal_count(c->tag) : max;
 
 	for (i = 0; i < n; i++)
-		rows[i] = (menu_row){ gbpal_label(i), i == c->cur ? "Current" : NULL, true };
+		rows[i] = (menu_row){ pal_label(c->tag, i), i == c->cur ? "Current" : NULL, true };
 	*heading = "Palette";
 	return n;
 }
@@ -14794,10 +14813,10 @@ static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
 	(void)a;
 	if (key != IN_ACCEPT) return MENU_STAY;
 	/* Kept even when it is the one showing: a game that has chosen keeps it when the shelf's default changes. */
-	if (sel != c->cur && gbpal_opts(sel, c->gambatte, p, sizeof p, col, sizeof col)) {
+	if (sel != c->cur && pal_opts(c->tag, sel, c->gambatte, p, sizeof p, col, sizeof col)) {
 		char *eq;
 		eq = strchr(p, '=');   plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - p), p, eq + 1);
-		eq = strchr(col, '='); plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - col), col, eq + 1);
+		if (col[0]) { eq = strchr(col, '='); plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - col), col, eq + 1); }
 	}
 	palette_save(c->tag, c->g, sel);
 	return MENU_DONE;
@@ -14831,10 +14850,11 @@ typedef struct { app *a; int sys; } dp_ctx;
 static int dp_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
 	dp_ctx *c = ctx;
-	int i, cur = palette_default_of(c->a->sys.systems[c->sys].tag), n = GBPAL_COUNT < max ? GBPAL_COUNT : max;
+	const char *tag = c->a->sys.systems[c->sys].tag;
+	int i, cur = palette_default_of(tag), n = pal_count(tag) < max ? pal_count(tag) : max;
 
 	for (i = 0; i < n; i++)
-		rows[i] = (menu_row){ gbpal_label(i), i == cur ? "Current" : NULL, true };
+		rows[i] = (menu_row){ pal_label(tag, i), i == cur ? "Current" : NULL, true };
 	*heading = "Default Palette";
 	return n;
 }
@@ -16104,11 +16124,11 @@ static void launch_one(app *a)
 
 	snprintf(rom, sizeof rom, "%s/%s/%s", P_ROMS, s->folder, romfile);
 	/* A Game Boy game always says its palette, Auto included, so a value an
-	 * older card stored for the whole system cannot decide it. */
+	 * older card stored for the whole system cannot decide it. A NES game sends its palette at every launch too. */
 	{
 		int pal = palette_of(a, o, &v->list.items[v->cursor]);
-		if (pal >= 0) gbpal_opts(pal, !strcmp(shelf_core(a, o, romfile), "gambatte"),
-		                         palp, sizeof palp, palc, sizeof palc);
+		if (pal >= 0) pal_opts(a->sys.systems[o].tag, pal, !strcmp(shelf_core(a, o, romfile), "gambatte"),
+		                       palp, sizeof palp, palc, sizeof palc);
 	}
 	disc = disc_of(a, o, &v->list.items[v->cursor]);
 	/* Each shelf's saves in a folder named as its Roms folder, so the same
@@ -16551,6 +16571,8 @@ static void launch_one(app *a)
 		}
 		if (palp[0]) {
 			argv[n++] = (char *)"--core-option"; argv[n++] = palp;
+		}
+		if (palc[0]) {
 			argv[n++] = (char *)"--core-option"; argv[n++] = palc;
 		}
 		argv[n] = NULL;

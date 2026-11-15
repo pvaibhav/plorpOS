@@ -26,4 +26,17 @@ int gbpal_find(const char *label);
  * does not fit. */
 int gbpal_opts(int i, int gambatte, char *preset, size_t pcap, char *colors, size_t ccap);
 
+/* The NES shelf's list is FCEUmm's. Default is first, then every palette the
+ * core declares except Raw, which needs a decoder shader, and Custom, which
+ * needs a palette file. */
+#define NESPAL_COUNT 24
+
+/* As gbpal_label and gbpal_find; entry 0 is Default. */
+const char *nespal_label(int i);
+int nespal_find(const char *label);
+
+/* Writes the core option for entry i, "fceumm_palette=<value>". False if it
+ * does not fit. */
+int nespal_opt(int i, char *opt, size_t cap);
+
 #endif
