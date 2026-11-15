@@ -797,11 +797,18 @@ static bool pal_opts(pal_list l, int i, const char *core, char *preset, size_t p
 static const char *palette_shelf(app *a, int sys, const game_entry *g)
 {
 	const char *tag = a->sys.systems[sys].tag;
+	/* The last answer is kept: the in-game menu asks every frame, and each answer opens the file. */
+	static char seen[LIB_PATH * 2];
+	static bool seen_cgb;
 	char rom[LIB_PATH * 2];
 
 	if (!gb_palette_tag(tag)) return tag;
 	snprintf(rom, sizeof rom, "%s/%s/%s", P_ROMS, a->sys.systems[sys].folder, g->file);
-	return gbpal_rom_is_cgb(rom) ? "GBC" : "GB";
+	if (strcmp(rom, seen) != 0) {
+		seen_cgb = gbpal_rom_is_cgb(rom);
+		snprintf(seen, sizeof seen, "%s", rom);
+	}
+	return seen_cgb ? "GBC" : "GB";
 }
 
 static int palette_default_of(const char *tag)
