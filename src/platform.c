@@ -1423,6 +1423,29 @@ bool plat_resident_send(const plat_game *g)
 		d_mode[0] = '\0';
 		d_pend_vol = d_pend_bri = -1;
 
+		/* The shader before RUN too (plorpos-reo.4.2). RUN's warmup draws
+		 * three frames before Diatom reads another message, so a chain sent
+		 * after it showed the game plain first - and on the Brick, where a
+		 * chain means a GL window, plain, then None's window down, then the
+		 * chain's up: a black flash on every launch. Sent here, the first
+		 * frame is drawn with it. None first: a chain Diatom refuses then
+		 * leaves the plain picture, not the last game's (ADR-0041).
+		 *
+		 * Its answer is read here, before RUN: an ERROR left unread would
+		 * reach diatom_wait before RUNNING and read as a game that never
+		 * started, and the launcher would start a second emulator beside
+		 * this one. A refused chain is a display setting that failed; the
+		 * game starts on the None already drawn, with plain_opts. */
+		bool refused = false;
+		if (g->shader) {
+			dsend("SETDISPLAY\tshader=none");
+			if (*g->shader && plat_resident_sync_rect(2000)) {
+				dsend("SETDISPLAY\t%s", g->shader);
+				refused = !plat_resident_sync_rect(2000);
+				if (refused) fprintf(stderr, "resident: shader not applied, starting with none\n");
+			}
+		}
+
 		/* Before RUN, not after. mgba_sgb_borders and mgba_use_bios are both
 		 * marked (Restart) by the core, meaning they are read during
 		 * retro_load_game; a SETOPT that arrives after the game is up applies
@@ -1437,8 +1460,9 @@ bool plat_resident_send(const plat_game *g)
 				dsend("SETOPT\tkey=%.*s\tvalue=%s",
 				      (int)(eq - kv), kv, eq + 1);
 			}
+			const char *const *opts = refused && g->plain_opts[0] ? g->plain_opts : g->opts;
 			for (i = 0; i < 2; i++) {
-				const char *kv = g->opts[i], *eq = kv ? strchr(kv, '=') : NULL;
+				const char *kv = opts[i], *eq = kv ? strchr(kv, '=') : NULL;
 				if (!eq) continue;
 				dsend("SETOPT\tkey=%.*s\tvalue=%s",
 				      (int)(eq - kv), kv, eq + 1);
@@ -1468,18 +1492,6 @@ bool plat_resident_send(const plat_game *g)
 		 * sample - a game started while music plays never makes a sound -
 		 * and sent every time, a resident that restarted cannot start loud. */
 		if (dsend("SETQUIET\ton=%d", d_quiet)) d_quiet_said = d_quiet;
-
-		/* The shader before RUN too (plorpos-reo.4.2). RUN's warmup draws
-		 * three frames before Diatom reads another message, so a chain sent
-		 * after it showed the game plain first - and on the Brick, where a
-		 * chain means a GL window, plain, then None's window down, then the
-		 * chain's up: a black flash on every launch. Sent here, the first
-		 * frame is drawn with it. None first: a chain Diatom refuses then
-		 * leaves the plain picture, not the last game's (ADR-0041). */
-		if (g->shader) {
-			dsend("SETDISPLAY\tshader=none");
-			if (*g->shader) dsend("SETDISPLAY\t%s", g->shader);
-		}
 
 		/* console and cheevos on RUN rather than after it, so a set is
 		 * watched from the first frame - an achievement can fire in the

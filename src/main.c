@@ -972,10 +972,10 @@ static const char *game_shader_fields(app *a, int sys, const game_entry *g, char
 	return shader_fields(a, game_shader(a, sys, g), f, cap);
 }
 
-/* The game's entry in `*list`, which is PAL_NONE (and the result -1) on a shelf with no Palette row. A row holding
- * a label from another list counts as no row: a zipped Color game could store a Game Boy palette before zips were
- * told apart. */
-static int palette_of(app *a, int sys, const game_entry *g, pal_list *list)
+/* The game's entry in `*list` as Clean draws it, whatever its Look. `*list` is PAL_NONE (and the result -1) on a
+ * shelf with no Palette row. A row holding a label from another list counts as no row: a zipped Color game could
+ * store a Game Boy palette before zips were told apart. */
+static int palette_own(app *a, int sys, const game_entry *g, pal_list *list)
 {
 	char key[LIB_PATH + 32], name[CFG_STR];
 	const char *base, *from = palette_shelf(a, sys, g);
@@ -983,16 +983,22 @@ static int palette_of(app *a, int sys, const game_entry *g, pal_list *list)
 
 	*list = shelf_pal_list(from);
 	if (*list == PAL_NONE) return -1;
-	/* Under Retro its screen. The palette it had stays stored, and is its own again under Clean. */
-	if (*list == PAL_GB && game_look(a, sys, g) != LOOK_CLEAN) {
-		*list = PAL_SCREEN;
-		return game_gbscreen(a, sys, g);
-	}
 	base = strrchr(g->file, '/');
 	snprintf(key, sizeof key, "palette.%s.%s", a->sys.systems[sys].tag, base ? base + 1 : g->file);
 	if (!db_get_str(db_lib(), key, name, sizeof name, NULL)) return palette_default_of(from);
 	i = pal_find(*list, name);
 	return strcmp(pal_label(*list, i), name) ? palette_default_of(from) : i;
+}
+
+/* The game's entry as its Palette row shows it: under Retro a monochrome game's screen. The palette it had stays
+ * stored, and is its own again under Clean. */
+static int palette_of(app *a, int sys, const game_entry *g, pal_list *list)
+{
+	int i = palette_own(a, sys, g, list);
+
+	if (*list != PAL_GB || game_look(a, sys, g) == LOOK_CLEAN) return i;
+	*list = PAL_SCREEN;
+	return game_gbscreen(a, sys, g);
 }
 
 static void palette_save(const char *tag, const game_entry *g, pal_list list, int i)
@@ -16354,7 +16360,7 @@ static void launch_one(app *a)
 	 * option rather than failing loudly. */
 	char *argv[20 + 2 * 48 + 6];   /* 48 is platform.c's COREOPT_MAX. And the palette's two (plorpos-gkd.76),
 	                                * and --disc (plorpos-gkd.47) */
-	char palp[64] = "", palc[64] = "";
+	char palp[64] = "", palc[64] = "", plainp[64] = "", plainc[64] = "";
 	char discs[16] = "";
 	int  disc;   /* 0-based; -1 = the core's choice (plorpos-gkd.47) */
 	bool resident = false, want_menu, native;
@@ -16380,6 +16386,8 @@ static void launch_one(app *a)
 		int pal = palette_of(a, o, &v->list.items[v->cursor], &list);
 
 		if (pal >= 0) pal_opts(list, pal, shelf_core(a, o, romfile), palp, sizeof palp, palc, sizeof palc);
+		if (list == PAL_SCREEN && (pal = palette_own(a, o, &v->list.items[v->cursor], &list)) >= 0)
+			pal_opts(list, pal, shelf_core(a, o, romfile), plainp, sizeof plainp, plainc, sizeof plainc);
 	}
 	disc = disc_of(a, o, &v->list.items[v->cursor]);
 	/* Each shelf's saves in a folder named as its Roms folder, so the same
@@ -16582,6 +16590,7 @@ static void launch_one(app *a)
 			.preview = pv, .save = save,
 			.console = console, .cheevos = active[0] ? active : NULL,
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
+			.plain_opts = { plainp[0] ? plainp : NULL, plainc[0] ? plainc : NULL },
 			.disc = disc + 1,
 			.shader = game_shader_fields(a, o, &v->list.items[v->cursor], shf, sizeof shf),
 			/* The mode is Diatom's own global and survives from the last
