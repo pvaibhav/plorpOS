@@ -952,9 +952,10 @@ static bool look_send(app *a, int sys, const game_entry *g, look_value v, int gb
 	char f[512];
 	const char *l = look_fields_of(a, sys, g, v, gbscreen, f, sizeof f);
 
-	plat_resident_line("SETDISPLAY\t%s", *l ? l : "shader=none");
-	fprintf(stderr, "look: %s: SETDISPLAY\t%s\n", look_label(v), *l ? l : "shader=none");
-	if (plat_resident_sync_rect(2000)) return true;
+	if (!*l) l = "shader=none";
+	plat_resident_line("SETDISPLAY\t%s", l);
+	fprintf(stderr, "look: %s: SETDISPLAY\t%s\n", look_label(v), l);
+	if (plat_resident_sync_rect(l, 2000)) return true;
 	fprintf(stderr, "look: %s not applied\n", look_label(v));
 	return false;
 }
@@ -11169,7 +11170,7 @@ static void gm_cycle_display(app *a, int d)
 	k = dmode_step(a->sys.systems[sys].tag, gm_dmode_now(a), d);
 	game_dmode_save(a, sys, g, k);
 	plat_resident_line("SETDISPLAY\tmode=%s", DMODES[k].name);
-	plat_resident_sync_rect(150);
+	plat_resident_sync_rect(NULL, 150);
 }
 
 /* The DS's Display for this game alone, sent to it at once. */
@@ -11181,7 +11182,7 @@ static void gm_fill_step(app *a, int d)
 	v = ds_fill_next(game_fill(a, sys, g), d);
 	game_fill_save(a, sys, g, v);
 	plat_resident_line("SETDISPLAY\tfill=%s", FILL_NAME[v]);
-	plat_resident_sync_rect(150);
+	plat_resident_sync_rect(NULL, 150);
 }
 
 #if defined(PLATFORM_MIYOO)
@@ -11194,7 +11195,7 @@ static void gm_scaling_step(app *a, int d)
 	k = (game_scaling(a, sys, g) + d + SCALING_COUNT) % SCALING_COUNT;
 	game_scaling_save(a, sys, g, k);
 	plat_resident_line("SETDISPLAY\tfilter=%s", SCALINGS[k].name);
-	plat_resident_sync_rect(150);
+	plat_resident_sync_rect(NULL, 150);
 }
 
 /* Look for this game alone, sent to it at once, as Display is, and kept once diatom draws it. What it does to the
@@ -14971,7 +14972,7 @@ static menu_result sh_key(app *a, void *ctx, in_button key, int sel)
 	plat_resident_line("SETDISPLAY\t%s", f);
 	/* A two-pass compile measured 89 ms on the GKD (diatom ADR-0041); the
 	 * bound is for a Diatom that never answers, not for the usual case. */
-	if (!plat_resident_sync_rect(2000)) {
+	if (!plat_resident_sync_rect(f, 2000)) {
 		fprintf(stderr, "shader: %s not applied\n", a->shaders.e[sel].name);
 		return MENU_DONE;
 	}

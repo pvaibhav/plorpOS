@@ -27,6 +27,16 @@ static int fields_are(look_value v, look_screen s, int gbscreen, const char *wan
 	return look_fields(v, s, gbscreen, DIR, out, sizeof out) && !strcmp(out, want);
 }
 
+/* The menu's wait for diatom's answer to `fields` (plat_resident_sync_rect): the first line that answers it. */
+static sl_answer answer_to(const char *fields, const char *const *lines)
+{
+	for (; *lines; lines++) {
+		sl_answer a = sl_answer_of(fields, *lines);
+		if (a != SL_ANSWER_NONE) return a;
+	}
+	return SL_ANSWER_NONE;
+}
+
 static int plan_is(look_plan p, int keep, int correct, look_core core)
 {
 	return p.keep == keep && p.correct == correct && p.core == core;
@@ -84,6 +94,29 @@ int main(void)
 	ck(fields_are(LOOK_RETRO, SCREEN_GB, 7, "shader=" DIR "/flipfx-dots-dmg.glsl:nearest:1\tfinal=nearest"),
 	   "a screen out of range is DMG");
 	ck(!look_fields(LOOK_RETRO_BEZELS, SCREEN_GBA, 0, DIR, small, sizeof small), "false when it does not fit");
+
+	printf("diatom's answer in a game's menu:\n");
+	{
+		char want[512], now[512], stale[1024], drawn[1024];
+		const char *refused = "ERROR\tcode=bad_shader\tmsg=flipfx: unknown pass";
+
+		look_fields(LOOK_RETRO_BEZELS, SCREEN_GB, 0, DIR, want, sizeof want);
+		look_fields(LOOK_RETRO, SCREEN_GB, 0, DIR, now, sizeof now);
+		snprintf(stale, sizeof stale, "DISPLAY\tmode=integer\tfilter=sharp\trect=480x432+80+24\t%s", now);
+		snprintf(drawn, sizeof drawn, "DISPLAY\tmode=integer\tfilter=sharp\trect=480x432+136+72\t%s", want);
+		ck(answer_to(want, (const char *[]){ drawn, NULL }) == SL_ANSWER_DRAWN, "a DISPLAY carrying the chain asked for draws it");
+		ck(answer_to(want, (const char *[]){ refused, NULL }) == SL_ANSWER_REFUSED, "bad_shader refuses it");
+		ck(answer_to(want, (const char *[]){ stale, refused, NULL }) == SL_ANSWER_REFUSED,
+		   "an earlier step's DISPLAY, the old look in it, then bad_shader: refused, not kept");
+		ck(answer_to(want, (const char *[]){ stale, "LEVEL\tkind=volume\tindex=3\tcount=20", drawn, NULL }) == SL_ANSWER_DRAWN,
+		   "an earlier step's DISPLAY, then the one carrying the chain: drawn");
+		ck(answer_to(want, (const char *[]){ stale, NULL }) == SL_ANSWER_NONE, "the earlier DISPLAY alone answers nothing");
+		ck(answer_to("shader=none", (const char *[]){ stale, "DISPLAY\tmode=integer\tshader=none\tfinal=nearest", NULL }) ==
+		   SL_ANSWER_DRAWN, "back to Clean: the DISPLAY saying none");
+		ck(answer_to(want, (const char *[]){ "DISPLAY\tmode=integer\tshader=" DIR "/flipfx-dots-dmg.glsl:nearest:1\tfinal=nearest",
+		                                     refused, NULL }) == SL_ANSWER_REFUSED,
+		   "a chain that only begins as the one asked for is not it");
+	}
 
 	printf("transitions in a game's menu:\n");
 	ck(plan_is(look_plan_of(LOOK_CLEAN, LOOK_RETRO, SCREEN_GB, false, true), 1, 0, LOOK_CORE_GREY),

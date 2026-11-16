@@ -1928,19 +1928,26 @@ void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg)
 /* Only safe while Diatom is paused, which is the only place it is called from:
  * a game that is running can send EXIT, and this would eat it. Paused, the only
  * traffic is what our own SETDISPLAY provoked. */
-bool plat_resident_sync_rect(int timeout_ms)
+bool plat_resident_sync_rect(const char *fields, int timeout_ms)
 {
 	unsigned t0 = SDL_GetTicks();
 	char *l;
 
 	if (dsock < 0) return false;
 	while ((int)(SDL_GetTicks() - t0) < timeout_ms) {
-		l = dline(timeout_ms);
+		l = dline(timeout_ms - (int)(SDL_GetTicks() - t0));
 		if (!l) break;
-		if (strncmp(l, "DISPLAY\t", 8) == 0) { d_note_display(l); return true; }
+		/* A DISPLAY with another shader answers an earlier SETDISPLAY whose
+		 * own wait gave up, and says nothing about this one. */
+		if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
+		switch (sl_answer_of(fields, l)) {
+		case SL_ANSWER_DRAWN: return true;
 		/* Refused: no DISPLAY is coming (a shader diatom could not build,
 		 * plorpos-gkd.72.4), so do not wait the timeout out for one. */
-		if (strncmp(l, "ERROR\t", 6) == 0) { fprintf(stderr, "resident: %s\n", l); return false; }
+		case SL_ANSWER_REFUSED:
+		case SL_ANSWER_FAILED: fprintf(stderr, "resident: %s\n", l); return false;
+		case SL_ANSWER_NONE: break;
+		}
 		if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
 		else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
 	}
