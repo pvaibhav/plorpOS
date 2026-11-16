@@ -892,7 +892,7 @@ static void sys_look_step(app *a, int sys, int d)
 {
 	char key[CFG_STR + 16];
 	const char *tag = a->sys.systems[sys].tag, *colour = look_colour_shelf(tag);
-	look_value was = sys_look(a, sys), v = (look_value)((was + d + LOOK_COUNT) % LOOK_COUNT);
+	look_value was = sys_look(a, sys), v = look_next(was, d);
 	look_plan p = look_plan_of(was, v, look_screen_of(tag, 1), palette_default_of(colour) == 0, true);
 
 	snprintf(key, sizeof key, "shader.%s", tag);
@@ -991,13 +991,13 @@ static int palette_own(app *a, int sys, const game_entry *g, pal_list *list)
 	return strcmp(pal_label(*list, i), name) ? palette_default_of(from) : i;
 }
 
-/* The game's entry as its Palette row shows it: under Retro a monochrome game's screen. The palette it had stays
- * stored, and is its own again under Clean. */
-static int palette_of(app *a, int sys, const game_entry *g, pal_list *list)
+/* The game's entry as its Palette row shows it: under Retro (`retro`) a monochrome game's screen. The palette it had
+ * stays stored, and is its own again under Clean. */
+static int palette_of(app *a, int sys, const game_entry *g, bool retro, pal_list *list)
 {
 	int i = palette_own(a, sys, g, list);
 
-	if (*list != PAL_GB || game_look(a, sys, g) == LOOK_CLEAN) return i;
+	if (*list != PAL_GB || !retro) return i;
 	*list = PAL_SCREEN;
 	return game_gbscreen(a, sys, g);
 }
@@ -3664,9 +3664,24 @@ static void aout_retry_in_game(void)
 }
 
 
-/* A monochrome game launched under Retro, its core sent plain grey: its own palette, for a game whose look diatom
- * refused (plat_resident_shader_refused). core NULL: none waiting. */
-static struct { pal_list list; int i; const char *core; } g_own_pal;
+/* The Look of the game playing (look_session), settled once diatom has answered the launch's chain. A monochrome
+ * game launched under Retro was sent plain grey, and waits here with its own palette in case that answer is a
+ * refusal (plat_resident_shader_refused); core NULL: none waiting. */
+static struct { look_session s; bool settled; pal_list list; int i; const char *core; } g_look;
+
+/* What the in-game rows read. The refusal comes before RUNNING, so once the game runs the answer is in. */
+static look_session *look_now(void)
+{
+	if (!g_look.settled && plat_resident_running()) {
+		g_look.settled = true;
+		g_look.s = look_session_of(g_look.s.stored, plat_resident_shader_refused());
+		if (plat_resident_shader_refused() && g_look.core) {
+			fprintf(stderr, "look: refused at launch, the game's own palette\n");
+			pal_send(g_look.list, g_look.i, g_look.core);
+		}
+	}
+	return &g_look.s;
+}
 
 static void on_game_tick(void)
 {
@@ -3674,14 +3689,7 @@ static void on_game_tick(void)
 
 	int rc;
 
-	/* The refusal came before RUNNING, and the game runs Clean: the Palette row's own path, once it runs. */
-	if (g_own_pal.core && plat_resident_running()) {
-		if (plat_resident_shader_refused()) {
-			fprintf(stderr, "look: refused at launch, the game's own palette\n");
-			pal_send(g_own_pal.list, g_own_pal.i, g_own_pal.core);
-		}
-		g_own_pal.core = NULL;
-	}
+	look_now();
 
 	/* Muse, bounded: read what has arrived, and send at most one PLAY when a
 	 * track ends - which is what keeps an album going through a game.
@@ -11204,20 +11212,21 @@ static void gm_look_step(app *a, int d)
 {
 	int sys, pal;
 	const game_entry *g = playing(a, &sys);
-	look_value was = game_look(a, sys, g), v = (look_value)((was + d + LOOK_COUNT) % LOOK_COUNT);
+	look_session *s = look_now();
+	look_value v = look_next(s->active, d);
 	const char *core = shelf_core(a, sys, g->file);
 	pal_list list;
 	look_plan p;
 
-	pal = palette_of(a, sys, g, &list);
-	p = look_plan_of(was, v, game_screen(a, sys, g), list == PAL_CC && pal == 0,
-	                 look_send(a, sys, g, v, game_gbscreen(a, sys, g)));
+	pal = palette_of(a, sys, g, look_retro(*s), &list);
+	p = look_change(s, v, game_screen(a, sys, g), list == PAL_CC && pal == 0,
+	                look_send(a, sys, g, v, game_gbscreen(a, sys, g)));
 	if (p.keep) game_look_save(a, sys, g, v);
 	if (p.correct) {
 		palette_save(a->sys.systems[sys].tag, g, PAL_CC, 0);
 		pal_send(PAL_CC, 0, core);
 	}
-	if (p.core != LOOK_CORE_KEEP && (pal = palette_of(a, sys, g, &list)) >= 0) pal_send(list, pal, core);
+	if (p.core != LOOK_CORE_KEEP && (pal = palette_of(a, sys, g, look_retro(*s), &list)) >= 0) pal_send(list, pal, core);
 }
 #endif
 
@@ -11238,9 +11247,9 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 		u.nds    = is_nds_tag(a->sys.systems[sys].tag);
 		u.fill   = ds_fill_shown(a->sys.systems[sys].tag) ? FILL_LABEL[game_fill(a, sys, g)] : NULL;
 		u.look   = game_screen(a, sys, g) != SCREEN_NONE;
-		u.shader = u.look ? look_label(game_look(a, sys, g)) : a->shaders.e[game_shader(a, sys, g)].name;
+		u.shader = u.look ? look_label(look_now()->active) : a->shaders.e[game_shader(a, sys, g)].name;
 #if defined(PLATFORM_MIYOO)
-		u.scaling_live = !dmode_whole(gm_dmode_now(a)) && game_look(a, sys, g) == LOOK_CLEAN;
+		u.scaling_live = !dmode_whole(gm_dmode_now(a)) && !look_retro(*look_now());
 		u.scaling = SCALINGS[game_scaling(a, sys, g)].label;
 #else
 		u.scaling = NULL;
@@ -11252,7 +11261,7 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
 		pal_list list;
-		int pal = palette_of(a, o, &sv->list.items[sv->cursor], &list);
+		int pal = palette_of(a, o, &sv->list.items[sv->cursor], look_retro(*look_now()), &list);
 		u.palette = pal < 0 ? NULL : pal_label(list, pal);
 	}
 	u.stylus = NULL;
@@ -14644,7 +14653,7 @@ static int gm_width(app *a)
 		sysview *sv = &a->view[a->sys_cursor];
 		pal_list list;
 
-		palette_of(a, shelf_owner(a, a->sys_cursor, sv->cursor), &sv->list.items[sv->cursor], &list);
+		palette_of(a, shelf_owner(a, a->sys_cursor, sv->cursor), &sv->list.items[sv->cursor], look_retro(*look_now()), &list);
 		/* A Game Boy game's two lists, palettes and screens, which the Look row turns between. */
 		for (int twice = list == PAL_SCREEN ? 2 : 1; twice--; list = PAL_GB)
 			for (k = 0; k < pal_count(list); k++) {
@@ -15036,7 +15045,7 @@ static pal_ctx pal_game(app *a, gm_ctx *gm)
 	pal_ctx c = { .gm = gm, .g = &sv->list.items[sv->cursor], .sys = o, .tag = a->sys.systems[o].tag,
 	              .core = shelf_core(a, o, sv->list.items[sv->cursor].file) };
 
-	c.cur = palette_of(a, o, c.g, &c.list);
+	c.cur = palette_of(a, o, c.g, look_retro(*look_now()), &c.list);
 	return c;
 }
 
@@ -15063,7 +15072,7 @@ static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
 
 	if (key != IN_ACCEPT) return MENU_STAY;
 	if (c->list == PAL_SCREEN) {
-		if (sel != c->cur && look_send(a, c->sys, c->g, game_look(a, c->sys, c->g), sel))
+		if (sel != c->cur && look_send(a, c->sys, c->g, look_now()->active, sel))
 			game_gbscreen_save(a, c->sys, c->g, sel);
 		return MENU_DONE;
 	}
@@ -15247,10 +15256,7 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	/* Scaling: to the running game at once, as Display is, so it is judged
 	 * against the game it is for. */
 	if (sel == GM_SCALING && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
-		int sys;
-		const game_entry *g = playing(a, &sys);
-
-		if (dmode_whole(gm_dmode_now(a)) || game_look(a, sys, g) != LOOK_CLEAN) return MENU_STAY;
+		if (dmode_whole(gm_dmode_now(a)) || look_retro(*look_now())) return MENU_STAY;
 		gm_scaling_step(a, key == IN_LEFT ? -1 : 1);
 		return MENU_STAY;
 	}
@@ -16397,12 +16403,15 @@ static void launch_one(app *a)
 	 * older card stored for the whole system cannot decide it. */
 	{
 		pal_list list;
-		int pal = palette_of(a, o, &v->list.items[v->cursor], &list);
+		look_value look = game_look(a, o, &v->list.items[v->cursor]);
+		int pal = palette_of(a, o, &v->list.items[v->cursor], look != LOOK_CLEAN, &list);
 
 		if (pal >= 0) pal_opts(list, pal, shelf_core(a, o, romfile), palp, sizeof palp, palc, sizeof palc);
-		g_own_pal.core = NULL;
-		if (list == PAL_SCREEN && (g_own_pal.i = palette_own(a, o, &v->list.items[v->cursor], &g_own_pal.list)) >= 0)
-			g_own_pal.core = shelf_core(a, o, romfile);
+		g_look.s = look_session_of(look, false);
+		g_look.settled = false;
+		g_look.core = NULL;
+		if (list == PAL_SCREEN && (g_look.i = palette_own(a, o, &v->list.items[v->cursor], &g_look.list)) >= 0)
+			g_look.core = shelf_core(a, o, romfile);
 	}
 	disc = disc_of(a, o, &v->list.items[v->cursor]);
 	/* Each shelf's saves in a folder named as its Roms folder, so the same

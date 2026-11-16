@@ -150,6 +150,33 @@ int main(void)
 	ck(plan_is(look_plan_of(LOOK_CLEAN, LOOK_RETRO, SCREEN_NONE, false, true), 0, 0, LOOK_CORE_KEEP),
 	   "no screen, no look");
 
+	printf("a game whose stored look diatom refused at launch:\n");
+	{
+		look_session s = look_session_of(LOOK_RETRO, true), t;
+
+		ck(s.active == LOOK_CLEAN && s.stored == LOOK_RETRO, "it runs Clean, and Retro stays stored for the next launch");
+		ck(!look_retro(s), "so its Palette row lists palettes, and its Scaling row is live");
+		ck(look_next(s.active, 1) == LOOK_RETRO && look_next(s.active, -1) == LOOK_RETRO_BEZELS,
+		   "the Look row steps from Clean");
+		t = s;
+		ck(plan_is(look_change(&t, look_next(t.active, 1), SCREEN_GB, false, true), 1, 0, LOOK_CORE_GREY) &&
+		   t.active == LOOK_RETRO && t.stored == LOOK_RETRO && look_retro(t),
+		   "a step to Retro diatom draws: kept, the core on plain grey");
+		t = s;
+		ck(plan_is(look_change(&t, look_next(t.active, -1), SCREEN_GB, false, true), 1, 0, LOOK_CORE_GREY) &&
+		   t.active == LOOK_RETRO_BEZELS && t.stored == LOOK_RETRO_BEZELS,
+		   "a step to Retro with Bezels the same");
+		t = s;
+		ck(plan_is(look_change(&t, LOOK_RETRO, SCREEN_GB, false, false), 0, 0, LOOK_CORE_KEEP) &&
+		   t.active == LOOK_CLEAN && t.stored == LOOK_RETRO, "refused again: still Clean, still Retro stored");
+		t = look_session_of(LOOK_CLEAN, false);
+		ck(t.active == LOOK_CLEAN && t.stored == LOOK_CLEAN, "Clean, drawn: no difference");
+		t = look_session_of(LOOK_RETRO_BEZELS, false);
+		ck(t.active == LOOK_RETRO_BEZELS && look_retro(t) &&
+		   plan_is(look_change(&t, look_next(t.active, -1), SCREEN_GB, false, true), 1, 0, LOOK_CORE_KEEP),
+		   "drawn as stored: Retro with Bezels to Retro keeps the grey");
+	}
+
 	printf("a shelf's Default Look:\n");
 	ck(!strcmp(look_colour_shelf("GB"), "GBC") && !strcmp(look_colour_shelf("GBC"), "GBC") &&
 	   !strcmp(look_colour_shelf("GBA"), "GBA") && !look_colour_shelf("NES"),

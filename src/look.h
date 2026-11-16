@@ -52,6 +52,25 @@ typedef struct {
 } look_plan;
 look_plan look_plan_of(look_value was, look_value now, look_screen s, bool corrected, bool confirmed);
 
+/* The value a step of `d` from `v` lands on, round the three. */
+look_value look_next(look_value v, int d);
+
+/* A game's Look while it plays. `stored` is the player's choice, shader.<TAG>.<file> or the shelf's. `active` is what
+ * diatom draws, and what the in-game rows read: the Look row and its steps, the Palette row's list, the Scaling row's
+ * grey. The two part only when diatom refuses the stored look at launch: the game runs Clean, and the choice waits,
+ * stored, for the next launch. */
+typedef struct { look_value stored, active; } look_session;
+
+/* At launch, from the stored Look; `refused` once diatom has refused the launch's chain. */
+look_session look_session_of(look_value stored, bool refused);
+
+/* look_plan_of from the active look to `now`. A change the plan keeps is the active look, and the stored one. */
+look_plan look_change(look_session *s, look_value now, look_screen scr, bool corrected, bool confirmed);
+
+/* Whether the game draws under Retro: a monochrome game's Palette row lists screens, and its Scaling row is grey,
+ * the look having its own scaler. */
+bool look_retro(look_session s);
+
 /* "shader=none" for Clean or SCREEN_NONE. Else "shader=<dir>/flipfx-<kind>.glsl:nearest:1\tfinal=nearest", and
  * under Retro with Bezels a second pass, <dir>/flipfx-bezel-<lens>.glsl:nearest:1, before the final. `gbscreen`
  * picks the kind of a SCREEN_GB game. Ready to follow "SETDISPLAY\t"; false if it does not fit. */

@@ -55,6 +55,26 @@ look_plan look_plan_of(look_value was, look_value now, look_screen s, bool corre
 	return p;
 }
 
+look_value look_next(look_value v, int d)
+{
+	return (look_value)(((int)v + d % LOOK_COUNT + LOOK_COUNT) % LOOK_COUNT);
+}
+
+look_session look_session_of(look_value stored, bool refused)
+{
+	return (look_session){ stored, refused ? LOOK_CLEAN : stored };
+}
+
+look_plan look_change(look_session *s, look_value now, look_screen scr, bool corrected, bool confirmed)
+{
+	look_plan p = look_plan_of(s->active, now, scr, corrected, confirmed);
+
+	if (p.keep) s->stored = s->active = now;
+	return p;
+}
+
+bool look_retro(look_session s) { return s.active != LOOK_CLEAN; }
+
 static const char *const GBSCREEN[GBSCREEN_COUNT] = { "DMG", "Pocket", "Light" };
 
 const char *gbscreen_label(int i)
