@@ -117,6 +117,10 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 	 * over, as Cheevos is with no set. */
 	out[GM_SHADER].value = SHADER_VALUE(u->shaders ? u->shader : "None");
 	out[GM_SHADER].live  = u->shaders;
+	if (u->look) {
+		out[GM_SHADER].label = "Look";
+		out[GM_SHADER].value = u->shader;
+	}
 	/* Under the scanline filter: how the picture is scaled to the panel. */
 	out[GM_SCALING].value = u->scaling;
 	out[GM_SCALING].live  = u->scaling != NULL && u->scaling_live;

@@ -117,8 +117,9 @@ typedef struct {
 	const char *dmode;    /* the display mode's label */
 	bool        nds;      /* a DS game: the mode row is Layout (plorpos-6ei.13) */
 	const char *fill;     /* the DS's Display, "Aspect"|"Stretch"|"Integer"; NULL: no row (not a DS, or a panel where they all draw the same) */
-	const char *shader;   /* the shader's name (plorpos-gkd.72.4) */
+	const char *shader;   /* the shader's name (plorpos-gkd.72.4), or under look the Look's label */
 	bool        shaders;  /* a list to pick from - the GKD's, never a Brick's */
+	bool        look;     /* the Flip's Game Boy, Color or Advance game: the row is Look (look.h) */
 	const char *scaling;  /* "Crisp"|"Soft"; NULL: no row (every unit but the Flip, diatom ADR-9001) */
 	bool        scaling_live;  /* false: shown greyed with the stored choice and passed over (Integer draws whole pixels whatever it says) */
 	const char *palette;  /* this game's palette; NULL: not a Game Boy or NES game (plorpos-gkd.76) */

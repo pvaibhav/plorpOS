@@ -58,6 +58,7 @@
 #include "shaderlist.h"
 #include "clock.h"
 #include "gbpal.h"
+#include "look.h"
 #include "ui.h"
 #include "wifi_menu.h"
 
@@ -765,8 +766,9 @@ static bool gb_palette_tag(const char *tag)
 }
 
 /* The list a Palette row offers (gbpal.h). A Game Boy game picks its shades and a NES game its palette. A Game Boy
- * Color or Advance game draws its own colours, so it picks the core's colour correction, on or off. */
-typedef enum { PAL_NONE, PAL_GB, PAL_CC, PAL_NES } pal_list;
+ * Color or Advance game draws its own colours, so it picks the core's colour correction, on or off. Under the Flip's
+ * Retro a Game Boy game picks its screen instead (look.h), and the core draws plain grey for diatom to shade. */
+typedef enum { PAL_NONE, PAL_GB, PAL_CC, PAL_NES, PAL_SCREEN } pal_list;
 
 /* The list a shelf's Default Palette row offers. */
 static pal_list shelf_pal_list(const char *tag)
@@ -779,17 +781,40 @@ static pal_list shelf_pal_list(const char *tag)
 
 static bool palette_tag(const char *tag) { return shelf_pal_list(tag) != PAL_NONE; }
 
-static int pal_count(pal_list l) { return l == PAL_NES ? NESPAL_COUNT : l == PAL_CC ? CCPAL_COUNT : GBPAL_COUNT; }
-static const char *pal_label(pal_list l, int i) { return l == PAL_NES ? nespal_label(i) : l == PAL_CC ? ccpal_label(i) : gbpal_label(i); }
-static int pal_find(pal_list l, const char *label) { return l == PAL_NES ? nespal_find(label) : l == PAL_CC ? ccpal_find(label) : gbpal_find(label); }
+static int pal_count(pal_list l)
+{
+	return l == PAL_NES ? NESPAL_COUNT : l == PAL_CC ? CCPAL_COUNT : l == PAL_SCREEN ? GBSCREEN_COUNT : GBPAL_COUNT;
+}
+
+static const char *pal_label(pal_list l, int i)
+{
+	return l == PAL_NES ? nespal_label(i) : l == PAL_CC ? ccpal_label(i) : l == PAL_SCREEN ? gbscreen_label(i) : gbpal_label(i);
+}
+
+static int pal_find(pal_list l, const char *label)
+{
+	return l == PAL_NES ? nespal_find(label) : l == PAL_CC ? ccpal_find(label) : l == PAL_SCREEN ? gbscreen_find(label) : gbpal_find(label);
+}
 
 /* The core options that make entry i of a list on `core`. A Game Boy palette takes two. The other lists take one, and
  * `colors` comes back empty. */
 static bool pal_opts(pal_list l, int i, const char *core, char *preset, size_t pcap, char *colors, size_t ccap)
 {
+	if (l == PAL_SCREEN) return gbpal_opts(gbpal_find("Grayscale"), !strcmp(core, "gambatte"), preset, pcap, colors, ccap);
 	if (l == PAL_GB) return gbpal_opts(i, !strcmp(core, "gambatte"), preset, pcap, colors, ccap);
 	colors[0] = '\0';
 	return l == PAL_CC ? ccpal_opt(i, core, preset, pcap) : nespal_opt(i, preset, pcap);
+}
+
+/* Entry i of a list to the running game, as core options. No answer is waited for: an option diatom does not take
+ * is logged by it. */
+static void pal_send(pal_list l, int i, const char *core)
+{
+	char p[64], col[64], *eq;
+
+	if (!pal_opts(l, i, core, p, sizeof p, col, sizeof col)) return;
+	eq = strchr(p, '=');   plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - p), p, eq + 1);
+	if (col[0]) { eq = strchr(col, '='); plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - col), col, eq + 1); }
 }
 
 /* The shelf whose list and Default Palette a game follows. That is its own, except on the two Game Boy shelves, which
@@ -827,6 +852,118 @@ static void palette_default_save(const char *tag, int i)
 	db_set_str(db_lib(), key, pal_label(shelf_pal_list(tag), i));
 }
 
+/* The Flip's Look (look.h), a Game Boy, Game Boy Color or Game Boy Advance game's row in place of its Scanline
+ * Filter. Kept in the Scanline Filter's rows, shader.<TAG> for the shelf and shader.<TAG>.<file> for a game, and a
+ * monochrome game's screen in screen.<TAG>.<file>. The screen goes by the game, as the Palette list does. None on
+ * every other platform, and none without the scanline list, whose directory the look's names are in. */
+static look_screen game_screen(app *a, int sys, const game_entry *g)
+{
+#if defined(PLATFORM_MIYOO)
+	if (a->shaders.count > 1)
+		return look_screen_of(a->sys.systems[sys].tag, !strcmp(palette_shelf(a, sys, g), "GBC"));
+#else
+	(void)a; (void)sys; (void)g;
+#endif
+	return SCREEN_NONE;
+}
+
+/* Whether the shelf's Default Scanline Filter is its Default Look. */
+static bool look_tag(app *a, const char *tag)
+{
+#if defined(PLATFORM_MIYOO)
+	return a->shaders.count > 1 && look_screen_of(tag, 0) != SCREEN_NONE;
+#else
+	(void)a; (void)tag;
+	return false;
+#endif
+}
+
+static look_value sys_look(app *a, int sys)
+{
+	char key[CFG_STR + 16], name[SL_NAME];
+
+	snprintf(key, sizeof key, "shader.%s", a->sys.systems[sys].tag);
+	return look_find(&a->shaders, db_get_str(db_dev(), key, name, sizeof name, NULL) ? name : NULL);
+}
+
+static void sys_look_save(app *a, int sys, look_value v)
+{
+	char key[CFG_STR + 16];
+
+	snprintf(key, sizeof key, "shader.%s", a->sys.systems[sys].tag);
+	db_set_str(db_dev(), key, look_stored(v));
+}
+
+/* Clean for a game with no screen. */
+static look_value game_look(app *a, int sys, const game_entry *g)
+{
+	char key[LIB_PATH + 48], name[SL_NAME];
+
+	if (game_screen(a, sys, g) == SCREEN_NONE) return LOOK_CLEAN;
+	ovr_key(key, sizeof key, "shader", a, sys, g);
+	return db_get_str(db_dev(), key, name, sizeof name, NULL) ? look_find(&a->shaders, name) : sys_look(a, sys);
+}
+
+static void game_look_save(app *a, int sys, const game_entry *g, look_value v)
+{
+	char key[LIB_PATH + 48];
+
+	ovr_key(key, sizeof key, "shader", a, sys, g);
+	db_set_str(db_dev(), key, look_stored(v));
+}
+
+static int game_gbscreen(app *a, int sys, const game_entry *g)
+{
+	char key[LIB_PATH + 48], name[16];
+
+	ovr_key(key, sizeof key, "screen", a, sys, g);
+	return db_get_str(db_dev(), key, name, sizeof name, NULL) ? gbscreen_find(name) : 0;
+}
+
+static void game_gbscreen_save(app *a, int sys, const game_entry *g, int i)
+{
+	char key[LIB_PATH + 48];
+
+	ovr_key(key, sizeof key, "screen", a, sys, g);
+	db_set_str(db_dev(), key, gbscreen_label(i));
+}
+
+/* The SETDISPLAY fields for look `v` on this game, "" for Clean. The one place a look becomes a chain: the launch
+ * and the in-game rows all ask here. */
+static const char *look_fields_of(app *a, int sys, const game_entry *g, look_value v, char *f, size_t cap)
+{
+	char dir[CFG_STR * 2];
+
+	snprintf(dir, sizeof dir, "%s/shaders", P_ROOT);
+	if (v == LOOK_CLEAN || !look_fields(v, game_screen(a, sys, g), game_gbscreen(a, sys, g), dir, f, cap)) return "";
+	return f;
+}
+
+/* Look `v` to the paused game. Not waited on to be kept: a diatom that cannot draw a look shows the game as Clean
+ * does, and the choice is still the player's for the next launch. */
+static void look_send(app *a, int sys, const game_entry *g, look_value v)
+{
+	char f[512];
+	const char *l = look_fields_of(a, sys, g, v, f, sizeof f);
+
+	plat_resident_line("SETDISPLAY\t%s", *l ? l : "shader=none");
+	fprintf(stderr, "look: %s: SETDISPLAY\t%s\n", look_label(v), *l ? l : "shader=none");
+	if (!plat_resident_sync_rect(2000)) fprintf(stderr, "look: %s not applied\n", look_label(v));
+}
+
+/* What a launch tells the game to draw: its Look where it has a screen, else its Shader (shader_fields). */
+static const char *game_shader_fields(app *a, int sys, const game_entry *g, char *f, size_t cap)
+{
+	if (game_screen(a, sys, g) != SCREEN_NONE) {
+		look_value v = game_look(a, sys, g);
+		const char *l = look_fields_of(a, sys, g, v, f, cap);
+
+		fprintf(stderr, "look: %s at launch: SETDISPLAY\t%s\n", look_label(v), *l ? l : "shader=none");
+		return l;
+	}
+	return shader_fields(a, game_shader(a, sys, g), f, cap);
+}
+
 /* The game's entry in `*list`, which is PAL_NONE (and the result -1) on a shelf with no Palette row. A row holding
  * a label from another list counts as no row: a zipped Color game could store a Game Boy palette before zips were
  * told apart. */
@@ -838,6 +975,11 @@ static int palette_of(app *a, int sys, const game_entry *g, pal_list *list)
 
 	*list = shelf_pal_list(from);
 	if (*list == PAL_NONE) return -1;
+	/* Under Retro its screen. The palette it had stays stored, and is its own again under Clean. */
+	if (*list == PAL_GB && game_look(a, sys, g) != LOOK_CLEAN) {
+		*list = PAL_SCREEN;
+		return game_gbscreen(a, sys, g);
+	}
 	base = strrchr(g->file, '/');
 	snprintf(key, sizeof key, "palette.%s.%s", a->sys.systems[sys].tag, base ? base + 1 : g->file);
 	if (!db_get_str(db_lib(), key, name, sizeof name, NULL)) return palette_default_of(from);
@@ -6574,10 +6716,13 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.palette    = palette_tag(sc->tag) ? pal_label(shelf_pal_list(sc->tag), palette_default_of(sc->tag)) : NULL;
 		u.overrides  = !is_ports(sc);
 		u.engine     = engine_label(a, sys);
-		u.shader     = a->shaders.e[a->view[sys].shader].name;
+		u.look       = look_tag(a, sc->tag);
+		u.shader     = u.look ? look_label(sys_look(a, sys)) : a->shaders.e[a->view[sys].shader].name;
 		u.shader_live = a->shaders.count > 1 && !(is_pico8(sc) && a->view[sys].native);
 #if defined(PLATFORM_MIYOO)
-		u.scaling_live = !(is_pico8(sc) && a->view[sys].native) && !dmode_whole(a->view[sys].dmode);
+		/* A Retro look has its own scaler, as Integer has whole pixels. */
+		u.scaling_live = !(is_pico8(sc) && a->view[sys].native) && !dmode_whole(a->view[sys].dmode) &&
+		                 !(u.look && sys_look(a, sys) != LOOK_CLEAN);
 		u.scaling      = SCALINGS[sys_scaling(a, sys)].label;
 #endif
 		u.muse_books = u.muse && muse_books_shown();
@@ -6773,11 +6918,15 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 }
 
 /* Reset Display Overrides (plorpos-36e): every game of a shelf back to its defaults - the rows the in-game menu
- * wrote (display/shader/dsfill/dsswap/scaling.<TAG>.<file>, and palette.<TAG>.<file> on a shelf with a Palette row). The defaults
- * themselves stay. Asked first, No selected. */
+ * wrote (display/shader/dsfill/dsswap/scaling.<TAG>.<file>, the Flip's screen.<TAG>.<file>, and palette.<TAG>.<file>
+ * on a shelf with a Palette row). The defaults themselves stay. Asked first, No selected. */
 static void display_overrides_reset(app *a, int sys)
 {
-	static const char *const KINDS[] = { "display", "shader", "dsfill", "dsswap", "scaling" };
+	static const char *const KINDS[] = { "display", "shader", "dsfill", "dsswap", "scaling",
+#if defined(PLATFORM_MIYOO)
+	                                     "screen",
+#endif
+	};
 	static const char *const YES[] = { "Yes" };
 	const char *tag = a->sys.systems[sys].tag;
 	bool pal = palette_tag(tag), nds = is_nds_tag(tag);
@@ -6785,7 +6934,8 @@ static void display_overrides_reset(app *a, int sys)
 
 	if (pick_panel_ex(a, "Reset Display Overrides",
 #if defined(PLATFORM_MIYOO)
-	                  pal ? "Are you sure? This will reset\nper-game Palette, Display Mode,\nScaling and Scanline Filter"
+	                  look_tag(a, tag) ? "Are you sure? This will reset\nper-game Palette, Display Mode,\nScaling and Look"
+	                  : pal ? "Are you sure? This will reset\nper-game Palette, Display Mode,\nScaling and Scanline Filter"
 	                  : nds ? "Are you sure? This will reset\nper-game Layout, Display Mode,\nScaling and Scanline Filter"
 	                  : "Are you sure? This will reset\nper-game Display Mode, Scaling\nand Scanline Filter",
 #else
@@ -9251,10 +9401,11 @@ static int menu_shelf_width(app *a)
 			if (mw > w) w = mw;
 		}
 		if (!own) rows[SM_DISPLAY].value = DMODES[0].label;
-		/* And every shader name, as the in-game menu measures them. */
-		for (k = 0; !own && k < a->shaders.count; k++) {
+		/* And every shader name, as the in-game menu measures them, or every look. */
+		for (k = 0; !own && k < (look_tag(a, a->sys.systems[i].tag) ? LOOK_COUNT : a->shaders.count); k++) {
 			int mw;
-			rows[sm_index(sm_extra_shown(a->sys.systems[i].tag), SM_SHADER)].value = a->shaders.e[k].name;
+			rows[sm_index(sm_extra_shown(a->sys.systems[i].tag), SM_SHADER)].value =
+				look_tag(a, a->sys.systems[i].tag) ? look_label((look_value)k) : a->shaders.e[k].name;
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
 		}
@@ -10016,6 +10167,12 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		/* Shader (plorpos-8xu): left and right step through the list, as
 		 * Display Mode does; A opens it, as the in-game row does. Saved for
 		 * the system, which is what a launch and the in-game row both read. */
+		/* Default Look: left and right step it, A steps forward, as Default Scaling. */
+		if (sel == SM_SHADER && (d || key == IN_ACCEPT) && look_tag(a, a->sys.systems[a->sys_cursor].tag)) {
+			sys_look_save(a, a->sys_cursor,
+			              (look_value)((sys_look(a, a->sys_cursor) + (d ? d : 1) + LOOK_COUNT) % LOOK_COUNT));
+			return MENU_STAY;
+		}
 		if (sel == SM_SHADER && (d || key == IN_ACCEPT) && a->shaders.count > 1) {
 			sysview *v = &a->view[a->sys_cursor];
 
@@ -10036,7 +10193,8 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		/* Default Scaling: left and right step it, A steps forward, saved at
 		 * once. Not for native PICO-8, which never goes through diatom. */
 		if (sel == SM_SCALING && (d || key == IN_ACCEPT) && !dmode_whole(a->view[a->sys_cursor].dmode) &&
-		    !(is_pico8(&a->sys.systems[a->sys_cursor]) && a->view[a->sys_cursor].native)) {
+		    !(is_pico8(&a->sys.systems[a->sys_cursor]) && a->view[a->sys_cursor].native) &&
+		    !(look_tag(a, a->sys.systems[a->sys_cursor].tag) && sys_look(a, a->sys_cursor) != LOOK_CLEAN)) {
 			int k = sys_scaling(a, a->sys_cursor) + (d ? d : 1);
 
 			sys_scaling_save(a, a->sys_cursor, (k + SCALING_COUNT) % SCALING_COUNT);
@@ -11012,6 +11170,25 @@ static void gm_scaling_step(app *a, int d)
 	plat_resident_line("SETDISPLAY\tfilter=%s", SCALINGS[k].name);
 	plat_resident_sync_rect(150);
 }
+
+/* Look for this game alone, sent to it at once, as Display is. Leaving Clean puts a monochrome game's core on plain
+ * grey, and a colour game's Palette on Colour Corrected, which the grid is drawn for (the player may change it back).
+ * Coming back to Clean gives the monochrome game its own palette again. */
+static void gm_look_step(app *a, int d)
+{
+	int sys, pal;
+	const game_entry *g = playing(a, &sys);
+	look_value was = game_look(a, sys, g), v = (look_value)((was + d + LOOK_COUNT) % LOOK_COUNT);
+	bool mono = game_screen(a, sys, g) == SCREEN_GB;
+	pal_list list;
+
+	game_look_save(a, sys, g, v);
+	look_send(a, sys, g, v);
+	if ((was == LOOK_CLEAN) == (v == LOOK_CLEAN) || (!mono && v == LOOK_CLEAN)) return;
+	if (!mono) palette_save(a->sys.systems[sys].tag, g, PAL_CC, 0);
+	pal = palette_of(a, sys, g, &list);
+	if (pal >= 0) pal_send(list, pal, shelf_core(a, sys, g->file));
+}
 #endif
 
 /* What the in-game menu needs from the app, handed to gm_rows to become rows.
@@ -11030,9 +11207,10 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 		u.dmode  = DMODES[gm_dmode_now(a)].label;
 		u.nds    = is_nds_tag(a->sys.systems[sys].tag);
 		u.fill   = ds_fill_shown(a->sys.systems[sys].tag) ? FILL_LABEL[game_fill(a, sys, g)] : NULL;
-		u.shader = a->shaders.e[game_shader(a, sys, g)].name;
+		u.look   = game_screen(a, sys, g) != SCREEN_NONE;
+		u.shader = u.look ? look_label(game_look(a, sys, g)) : a->shaders.e[game_shader(a, sys, g)].name;
 #if defined(PLATFORM_MIYOO)
-		u.scaling_live = !dmode_whole(gm_dmode_now(a));
+		u.scaling_live = !dmode_whole(gm_dmode_now(a)) && game_look(a, sys, g) == LOOK_CLEAN;
 		u.scaling = SCALINGS[game_scaling(a, sys, g)].label;
 #else
 		u.scaling = NULL;
@@ -14412,11 +14590,17 @@ static int gm_width(app *a)
 	}
 	/* And every shader name, for the same reason: picking one must not
 	 * resize the panel the player comes back to. */
-	for (k = 0; k < a->shaders.count && rows[GM_SHADER].live; k++) {
-		int mw;
-		rows[GM_SHADER].value = a->shaders.e[k].name;
-		mw = gm_measure(rows);
-		if (mw > w) w = mw;
+	{
+		int sys;
+		const game_entry *g = playing(a, &sys);
+		bool look = game_screen(a, sys, g) != SCREEN_NONE;
+
+		for (k = 0; k < (look ? LOOK_COUNT : a->shaders.count) && rows[GM_SHADER].live; k++) {
+			int mw;
+			rows[GM_SHADER].value = look ? look_label((look_value)k) : a->shaders.e[k].name;
+			mw = gm_measure(rows);
+			if (mw > w) w = mw;
+		}
 	}
 #if defined(PLATFORM_MIYOO)
 	for (k = 0; k < SCALING_COUNT && rows[GM_SCALING].live; k++) {
@@ -14431,12 +14615,14 @@ static int gm_width(app *a)
 		pal_list list;
 
 		palette_of(a, shelf_owner(a, a->sys_cursor, sv->cursor), &sv->list.items[sv->cursor], &list);
-		for (k = 0; k < pal_count(list); k++) {
-			int mw;
-			rows[GM_PALETTE].value = pal_label(list, k);
-			mw = gm_measure(rows);
-			if (mw > w) w = mw;
-		}
+		/* A Game Boy game's two lists, palettes and screens, which the Look row turns between. */
+		for (int twice = list == PAL_SCREEN ? 2 : 1; twice--; list = PAL_GB)
+			for (k = 0; k < pal_count(list); k++) {
+				int mw;
+				rows[GM_PALETTE].value = pal_label(list, k);
+				mw = gm_measure(rows);
+				if (mw > w) w = mw;
+			}
 	}
 	for (k = 0; k < g_disc.count && rows[GM_DISC].live; k++) {
 		char l[16];
@@ -14805,6 +14991,7 @@ static void shelf_shader_screen(app *a, int sys)
 typedef struct {
 	gm_ctx           *gm;
 	const game_entry *g;
+	int               sys;  /* the owner's */
 	int               cur;
 	const char       *tag;
 	pal_list          list;
@@ -14816,7 +15003,7 @@ static pal_ctx pal_game(app *a, gm_ctx *gm)
 {
 	sysview *sv = &a->view[a->sys_cursor];
 	int o = shelf_owner(a, a->sys_cursor, sv->cursor);
-	pal_ctx c = { .gm = gm, .g = &sv->list.items[sv->cursor], .tag = a->sys.systems[o].tag,
+	pal_ctx c = { .gm = gm, .g = &sv->list.items[sv->cursor], .sys = o, .tag = a->sys.systems[o].tag,
 	              .core = shelf_core(a, o, sv->list.items[sv->cursor].file) };
 
 	c.cur = palette_of(a, o, c.g, &c.list);
@@ -14839,20 +15026,19 @@ static int pal_build(void *ctx, menu_row *rows, int max, const char **heading)
  * game's Auto is the exception: its per-game colours wait for the next launch
  * (gbpal.c). No answer is waited for: an
  * option diatom does not take is logged by it, and the choice is still the
- * player's for the next launch. */
+ * player's for the next launch. A screen is diatom's, sent as the look. */
 static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
 {
 	pal_ctx *c = ctx;
-	char p[64], col[64];
 
-	(void)a;
 	if (key != IN_ACCEPT) return MENU_STAY;
-	/* Kept even when it is the one showing: a game that has chosen keeps it when the shelf's default changes. */
-	if (sel != c->cur && pal_opts(c->list, sel, c->core, p, sizeof p, col, sizeof col)) {
-		char *eq;
-		eq = strchr(p, '=');   plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - p), p, eq + 1);
-		if (col[0]) { eq = strchr(col, '='); plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - col), col, eq + 1); }
+	if (c->list == PAL_SCREEN) {
+		game_gbscreen_save(a, c->sys, c->g, sel);
+		if (sel != c->cur) look_send(a, c->sys, c->g, game_look(a, c->sys, c->g));
+		return MENU_DONE;
 	}
+	/* Kept even when it is the one showing: a game that has chosen keeps it when the shelf's default changes. */
+	if (sel != c->cur) pal_send(c->list, sel, c->core);
 	palette_save(c->tag, c->g, c->list, sel);
 	return MENU_DONE;
 }
@@ -15009,6 +15195,16 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 #if defined(PLATFORM_MIYOO)
+	/* Look, where the game has a screen: left steps back, right and A forward. */
+	if (sel == GM_SHADER && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		int sys;
+		const game_entry *g = playing(a, &sys);
+
+		if (game_screen(a, sys, g) != SCREEN_NONE) {
+			gm_look_step(a, key == IN_LEFT ? -1 : 1);
+			return MENU_STAY;
+		}
+	}
 	/* The Flip's Scanline Filter is On / Off: left and right turn it over, as they do in the shelf menu. */
 	if (sel == GM_SHADER && (key == IN_LEFT || key == IN_RIGHT)) {
 		sh_ctx sc = sh_game(a, c);
@@ -15021,7 +15217,10 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	/* Scaling: to the running game at once, as Display is, so it is judged
 	 * against the game it is for. */
 	if (sel == GM_SCALING && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
-		if (dmode_whole(gm_dmode_now(a))) return MENU_STAY;
+		int sys;
+		const game_entry *g = playing(a, &sys);
+
+		if (dmode_whole(gm_dmode_now(a)) || game_look(a, sys, g) != LOOK_CLEAN) return MENU_STAY;
 		gm_scaling_step(a, key == IN_LEFT ? -1 : 1);
 		return MENU_STAY;
 	}
@@ -16374,7 +16573,7 @@ static void launch_one(app *a)
 			.console = console, .cheevos = active[0] ? active : NULL,
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
 			.disc = disc + 1,
-			.shader = shader_fields(a, game_shader(a, o, &v->list.items[v->cursor]), shf, sizeof shf),
+			.shader = game_shader_fields(a, o, &v->list.items[v->cursor], shf, sizeof shf),
 			/* The mode is Diatom's own global and survives from the last
 			 * game, so a system never set would otherwise inherit whatever
 			 * the previous one chose; on RUN so the first frame has it. */

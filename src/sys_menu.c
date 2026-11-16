@@ -98,8 +98,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		out[SM_DISPLAY] = (menu_row){ u->nds ? "Default Layout" : "Default Display Mode", u->dmode, true };
 		out[SM_FILL]    = u->palette ? (menu_row){ "Default Palette", u->palette, true }
 		                             : (menu_row){ "Default Display", u->fill,    true };
-		out[SM_SHADER]  = (menu_row){ "Default " SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
-		                              u->shader_live };
+		out[SM_SHADER]  = u->look ? (menu_row){ "Default Look", u->shader, u->shader_live }
+		                          : (menu_row){ "Default " SHADER_LABEL, SHADER_VALUE(u->shader ? u->shader : "None"),
+		                                        u->shader_live };
 #if defined(PLATFORM_MIYOO)
 		out[SM_SCALING] = (menu_row){ "Default Scaling", u->scaling, u->scaling_live };
 #endif
