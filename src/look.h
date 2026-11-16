@@ -36,6 +36,18 @@ look_screen look_screen_of(const char *tag, int cgb);
 const char *gbscreen_label(int i);
 int gbscreen_find(const char *label);   /* 0 (DMG) for NULL or a label not listed */
 
+/* What follows a change of Look from `was` to `now`. In a game's menu, once diatom has answered the SETDISPLAY for
+ * `now` (`confirmed`); a refused look changes nothing. For a shelf's Default Look, which nothing confirms, `confirmed`
+ * is true and `s` is the screen of the colour games that follow it (look_screen_of(tag, 1)). `corrected` says whether
+ * the Palette in question, the game's or the shelf's Default Palette, is Colour Corrected already. */
+typedef enum { LOOK_CORE_KEEP, LOOK_CORE_GREY, LOOK_CORE_OWN } look_core;
+typedef struct {
+	bool      keep;      /* store `now` */
+	bool      correct;   /* store that Palette as Colour Corrected, and send it to a running core */
+	look_core core;      /* a monochrome game's core palette: as it is, plain grey, or its own again */
+} look_plan;
+look_plan look_plan_of(look_value was, look_value now, look_screen s, bool corrected, bool confirmed);
+
 /* "shader=none" for Clean or SCREEN_NONE. Else "shader=<dir>/flipfx-<kind>.glsl:nearest:1\tfinal=nearest", and
  * under Retro with Bezels a second pass, <dir>/flipfx-bezel-<lens>.glsl:nearest:1, before the final. `gbscreen`
  * picks the kind of a SCREEN_GB game. Ready to follow "SETDISPLAY\t"; false if it does not fit. */

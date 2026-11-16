@@ -930,25 +930,27 @@ static void game_gbscreen_save(app *a, int sys, const game_entry *g, int i)
 
 /* The SETDISPLAY fields for look `v` on this game, "" for Clean. The one place a look becomes a chain: the launch
  * and the in-game rows all ask here. */
-static const char *look_fields_of(app *a, int sys, const game_entry *g, look_value v, char *f, size_t cap)
+static const char *look_fields_of(app *a, int sys, const game_entry *g, look_value v, int gbscreen, char *f, size_t cap)
 {
 	char dir[CFG_STR * 2];
 
 	snprintf(dir, sizeof dir, "%s/shaders", P_ROOT);
-	if (v == LOOK_CLEAN || !look_fields(v, game_screen(a, sys, g), game_gbscreen(a, sys, g), dir, f, cap)) return "";
+	if (v == LOOK_CLEAN || !look_fields(v, game_screen(a, sys, g), gbscreen, dir, f, cap)) return "";
 	return f;
 }
 
-/* Look `v` to the paused game. Not waited on to be kept: a diatom that cannot draw a look shows the game as Clean
- * does, and the choice is still the player's for the next launch. */
-static void look_send(app *a, int sys, const game_entry *g, look_value v)
+/* Look `v` on Game Boy screen `gbscreen` to the paused game. True once diatom draws it: one it refuses is not kept by
+ * the caller, and the old one stays on, as with the Scanline Filter (sh_key). */
+static bool look_send(app *a, int sys, const game_entry *g, look_value v, int gbscreen)
 {
 	char f[512];
-	const char *l = look_fields_of(a, sys, g, v, f, sizeof f);
+	const char *l = look_fields_of(a, sys, g, v, gbscreen, f, sizeof f);
 
 	plat_resident_line("SETDISPLAY\t%s", *l ? l : "shader=none");
 	fprintf(stderr, "look: %s: SETDISPLAY\t%s\n", look_label(v), *l ? l : "shader=none");
-	if (!plat_resident_sync_rect(2000)) fprintf(stderr, "look: %s not applied\n", look_label(v));
+	if (plat_resident_sync_rect(2000)) return true;
+	fprintf(stderr, "look: %s not applied\n", look_label(v));
+	return false;
 }
 
 /* What a launch tells the game to draw: its Look where it has a screen, else its Shader (shader_fields). */
@@ -956,7 +958,7 @@ static const char *game_shader_fields(app *a, int sys, const game_entry *g, char
 {
 	if (game_screen(a, sys, g) != SCREEN_NONE) {
 		look_value v = game_look(a, sys, g);
-		const char *l = look_fields_of(a, sys, g, v, f, cap);
+		const char *l = look_fields_of(a, sys, g, v, game_gbscreen(a, sys, g), f, cap);
 
 		fprintf(stderr, "look: %s at launch: SETDISPLAY\t%s\n", look_label(v), *l ? l : "shader=none");
 		return l;
@@ -11171,23 +11173,26 @@ static void gm_scaling_step(app *a, int d)
 	plat_resident_sync_rect(150);
 }
 
-/* Look for this game alone, sent to it at once, as Display is. Leaving Clean puts a monochrome game's core on plain
- * grey, and a colour game's Palette on Colour Corrected, which the grid is drawn for (the player may change it back).
- * Coming back to Clean gives the monochrome game its own palette again. */
+/* Look for this game alone, sent to it at once, as Display is, and kept once diatom draws it. What it does to the
+ * Palette is look_plan_of's. */
 static void gm_look_step(app *a, int d)
 {
 	int sys, pal;
 	const game_entry *g = playing(a, &sys);
 	look_value was = game_look(a, sys, g), v = (look_value)((was + d + LOOK_COUNT) % LOOK_COUNT);
-	bool mono = game_screen(a, sys, g) == SCREEN_GB;
+	const char *core = shelf_core(a, sys, g->file);
 	pal_list list;
+	look_plan p;
 
-	game_look_save(a, sys, g, v);
-	look_send(a, sys, g, v);
-	if ((was == LOOK_CLEAN) == (v == LOOK_CLEAN) || (!mono && v == LOOK_CLEAN)) return;
-	if (!mono) palette_save(a->sys.systems[sys].tag, g, PAL_CC, 0);
 	pal = palette_of(a, sys, g, &list);
-	if (pal >= 0) pal_send(list, pal, shelf_core(a, sys, g->file));
+	p = look_plan_of(was, v, game_screen(a, sys, g), list == PAL_CC && pal == 0,
+	                 look_send(a, sys, g, v, game_gbscreen(a, sys, g)));
+	if (p.keep) game_look_save(a, sys, g, v);
+	if (p.correct) {
+		palette_save(a->sys.systems[sys].tag, g, PAL_CC, 0);
+		pal_send(PAL_CC, 0, core);
+	}
+	if (p.core != LOOK_CORE_KEEP && (pal = palette_of(a, sys, g, &list)) >= 0) pal_send(list, pal, core);
 }
 #endif
 
@@ -15033,8 +15038,8 @@ static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
 
 	if (key != IN_ACCEPT) return MENU_STAY;
 	if (c->list == PAL_SCREEN) {
-		game_gbscreen_save(a, c->sys, c->g, sel);
-		if (sel != c->cur) look_send(a, c->sys, c->g, game_look(a, c->sys, c->g));
+		if (sel != c->cur && look_send(a, c->sys, c->g, game_look(a, c->sys, c->g), sel))
+			game_gbscreen_save(a, c->sys, c->g, sel);
 		return MENU_DONE;
 	}
 	/* Kept even when it is the one showing: a game that has chosen keeps it when the shelf's default changes. */

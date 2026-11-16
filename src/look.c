@@ -33,6 +33,19 @@ look_screen look_screen_of(const char *tag, int cgb)
 	return SCREEN_NONE;
 }
 
+look_plan look_plan_of(look_value was, look_value now, look_screen s, bool corrected, bool confirmed)
+{
+	look_plan p = { false, false, LOOK_CORE_KEEP };
+	bool leaving = was == LOOK_CLEAN && now != LOOK_CLEAN, back = was != LOOK_CLEAN && now == LOOK_CLEAN;
+
+	if (!confirmed || was == now || s == SCREEN_NONE) return p;
+	p.keep = true;
+	if (s == SCREEN_GB) p.core = leaving ? LOOK_CORE_GREY : back ? LOOK_CORE_OWN : LOOK_CORE_KEEP;
+	/* Only on leaving Clean: the player may turn correction off under Retro, and that choice stays. */
+	else p.correct = leaving && !corrected;
+	return p;
+}
+
 static const char *const GBSCREEN[GBSCREEN_COUNT] = { "DMG", "Pocket", "Light" };
 
 const char *gbscreen_label(int i)

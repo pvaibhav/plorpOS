@@ -27,6 +27,11 @@ static int fields_are(look_value v, look_screen s, int gbscreen, const char *wan
 	return look_fields(v, s, gbscreen, DIR, out, sizeof out) && !strcmp(out, want);
 }
 
+static int plan_is(look_plan p, int keep, int correct, look_core core)
+{
+	return p.keep == keep && p.correct == correct && p.core == core;
+}
+
 int main(void)
 {
 	sl_list l;
@@ -79,6 +84,38 @@ int main(void)
 	ck(fields_are(LOOK_RETRO, SCREEN_GB, 7, "shader=" DIR "/flipfx-dots-dmg.glsl:nearest:1\tfinal=nearest"),
 	   "a screen out of range is DMG");
 	ck(!look_fields(LOOK_RETRO_BEZELS, SCREEN_GBA, 0, DIR, small, sizeof small), "false when it does not fit");
+
+	printf("transitions in a game's menu:\n");
+	ck(plan_is(look_plan_of(LOOK_CLEAN, LOOK_RETRO, SCREEN_GB, false, true), 1, 0, LOOK_CORE_GREY),
+	   "a monochrome game leaving Clean: kept, the core on plain grey");
+	ck(plan_is(look_plan_of(LOOK_CLEAN, LOOK_RETRO_BEZELS, SCREEN_GB, false, true), 1, 0, LOOK_CORE_GREY),
+	   "the same into Retro with Bezels");
+	ck(plan_is(look_plan_of(LOOK_RETRO, LOOK_RETRO_BEZELS, SCREEN_GB, false, true), 1, 0, LOOK_CORE_KEEP),
+	   "between the two Retro values the core stays grey");
+	ck(plan_is(look_plan_of(LOOK_RETRO_BEZELS, LOOK_CLEAN, SCREEN_GB, false, true), 1, 0, LOOK_CORE_OWN),
+	   "back to Clean: the game's own palette again");
+	ck(plan_is(look_plan_of(LOOK_CLEAN, LOOK_RETRO, SCREEN_GBC, false, true), 1, 1, LOOK_CORE_KEEP),
+	   "an Uncorrected Color game leaving Clean is corrected");
+	ck(plan_is(look_plan_of(LOOK_CLEAN, LOOK_RETRO, SCREEN_GBA, false, true), 1, 1, LOOK_CORE_KEEP),
+	   "an Uncorrected Advance game too");
+	ck(plan_is(look_plan_of(LOOK_CLEAN, LOOK_RETRO, SCREEN_GBC, true, true), 1, 0, LOOK_CORE_KEEP),
+	   "a Corrected one needs nothing written");
+	ck(plan_is(look_plan_of(LOOK_RETRO, LOOK_RETRO_BEZELS, SCREEN_GBC, false, true), 1, 0, LOOK_CORE_KEEP),
+	   "Uncorrected chosen under Retro stays");
+	ck(plan_is(look_plan_of(LOOK_RETRO, LOOK_CLEAN, SCREEN_GBA, true, true), 1, 0, LOOK_CORE_KEEP),
+	   "back to Clean leaves correction as it is");
+	{
+		int all = 1;
+
+		for (int w = 0; w < LOOK_COUNT; w++)
+			for (int v = 0; v < LOOK_COUNT; v++)
+				for (int s = SCREEN_GB; s <= SCREEN_GBA; s++)
+					all &= plan_is(look_plan_of((look_value)w, (look_value)v, (look_screen)s, false, false),
+					               0, 0, LOOK_CORE_KEEP);
+		ck(all, "refused by diatom: nothing kept and the palette untouched, from any value to any, on any screen");
+	}
+	ck(plan_is(look_plan_of(LOOK_CLEAN, LOOK_RETRO, SCREEN_NONE, false, true), 0, 0, LOOK_CORE_KEEP),
+	   "no screen, no look");
 
 	printf(fails ? "%d FAILED\n" : "ALL PASS\n", fails);
 	return fails != 0;
