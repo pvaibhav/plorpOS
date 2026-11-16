@@ -26,7 +26,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
         check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind check-btnmap check-shaderlist check-battery \
-        check-gbpal check-titles check-clock check-sysorder hooks storeprobe deploy restart logs
+        check-gbpal check-look check-titles check-clock check-sysorder hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl build/gkd/portfullscreen.so
@@ -49,7 +49,7 @@ endif
 CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
-         check-muselib check-musequeue check-museart check-controls check-hkbind check-btnmap check-shaderlist check-battery check-gbpal \
+         check-muselib check-musequeue check-museart check-controls check-hkbind check-btnmap check-shaderlist check-battery check-gbpal check-look \
          check-gamelist check-logpack check-titles check-clock check-sysorder check-paused \
          check-playlist
 
@@ -665,6 +665,15 @@ build-native/gbpal-check: tools/gbpal-check.c src/gbpal.c src/gbpal.h FORCE
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
 	      -o $@ tools/gbpal-check.c src/gbpal.c
+
+# The Flip's Look row: every SETDISPLAY line it can send, as diatom's Flip port reads it.
+check-look: build-native/look-check
+	@./build-native/look-check
+
+build-native/look-check: tools/look-check.c src/look.c src/look.h src/shaderlist.c src/shaderlist.h FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/look-check.c src/look.c src/shaderlist.c
 
 # Play time. The assertion that earns this its place is that a LAUNCH writes
 # nothing: that is a claim about a path nobody watches, and it stops being true

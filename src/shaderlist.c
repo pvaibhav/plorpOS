@@ -120,3 +120,47 @@ bool sl_fields(const sl_list *l, int i, const char *dir, char *out, size_t cap)
 	n += (size_t)snprintf(out + n, cap - n, "\tfinal=%s", l->e[i].final);
 	return n < cap;
 }
+
+/* The value of `key` ("shader=") in a tab-separated line, and in *len its length; NULL if absent. */
+static const char *field(const char *s, const char *key, size_t *len)
+{
+	size_t k = strlen(key);
+
+	for (const char *p = s; p; p = strchr(p, '\t')) {
+		if (*p == '\t') p++;
+		if (!strncmp(p, key, k)) {
+			p += k;
+			*len = strcspn(p, "\t");
+			return p;
+		}
+	}
+	return NULL;
+}
+
+/* True if `line` carries `key` as `fields` does. */
+static bool same_field(const char *fields, const char *line, const char *key)
+{
+	const char *want, *got;
+	size_t wn, gn;
+
+	want = field(fields, key, &wn);
+	got = field(line, key, &gn);
+	return want && got && wn == gn && !strncmp(want, got, wn);
+}
+
+sl_answer sl_answer_of(const char *fields, const char *line)
+{
+	const char *got;
+	size_t gn;
+
+	if (!strncmp(line, "ERROR\t", 6)) {
+		got = field(line, "code=", &gn);
+		return got && gn == 10 && !strncmp(got, "bad_shader", 10) ? SL_ANSWER_REFUSED : SL_ANSWER_FAILED;
+	}
+	if (strncmp(line, "DISPLAY\t", 8)) return SL_ANSWER_NONE;
+	if (!fields) return SL_ANSWER_DRAWN;
+	/* final= too, when asked: two entries can share their passes and differ only there. */
+	return same_field(fields, line, "shader=") &&
+	       (!field(fields, "final=", &gn) || same_field(fields, line, "final="))
+	       ? SL_ANSWER_DRAWN : SL_ANSWER_NONE;
+}

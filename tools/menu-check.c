@@ -466,6 +466,14 @@ static void system_menu(void)
 	ck(!strcmp(val(&rows[sm_index(false, SM_BOXART)]), "needs Wi-Fi"), "and says why");
 	ck(rows[sm_index(false, SM_RESCAN)].live, "Rescan does not need a network");
 
+	/* The Flip's Game Boy shelves: the row is Default Look, its value the look's label as it is. */
+	u.look = true; u.shader = "Retro with Bezels";
+	sys_menu_build(&u, rows, &b, &heading);
+	ck(!strcmp(rows[sm_index(false, SM_SHADER)].label, "Default Look") &&
+	   !strcmp(val(&rows[sm_index(false, SM_SHADER)]), "Retro with Bezels") && rows[sm_index(false, SM_SHADER)].live,
+	   "a look shelf: Default Look, with its value");
+	u.look = false; u.shader = "Scanlines";
+
 	/* No list, or PICO-8 running native: nothing a shader would reach. */
 	u.shader = NULL; u.shader_live = false;
 	sys_menu_build(&u, rows, &b, &heading);
@@ -920,6 +928,7 @@ static void ingame_rows(void)
 	u.nds = false; u.fill = NULL;
 	u.shader = "Real LCD"; u.shaders = true; u.palette = "GB Pocket";
 	u.disc = "Disc 2"; u.stylus = NULL; u.scaling = "Crisp"; u.scaling_live = true;
+	u.look = false;
 	n = gm_rows(&u, rows, &b);
 
 	printf("in-game menu, a game with a set:\n");
@@ -958,6 +967,17 @@ static void ingame_rows(void)
 	   "and carries the game's filter, reachable on the Flip");
 	ck(GM_PALETTE == GM_SCALING + 1 && !strcmp(rows[GM_PALETTE].label, "Palette"),
 	   "Palette is under Scaling (plorpos-gkd.76)");
+	u.look = true; u.shader = "Retro"; u.scaling_live = false;
+	gm_rows(&u, rows, &b);
+	ck(!strcmp(rows[GM_SHADER].label, "Look") && !strcmp(val(&rows[GM_SHADER]), "Retro") && rows[GM_SHADER].live,
+	   "the Flip's Game Boy game: the row is Look, with its value");
+	{
+		int ids[GM_ROWS], m = gm_compact(rows, gm_rows(&u, rows, &b), ids), hit = 0;
+		for (int i = 0; i < m; i++) hit |= ids[i] == GM_SCALING && !rows[i].live;
+		ck(hit, "and Scaling stays, greyed, under Retro");
+	}
+	u.look = false; u.shader = "Real LCD"; u.scaling_live = true;
+	n = gm_rows(&u, rows, &b);
 	ck(!strcmp(val(&rows[GM_PALETTE]), "GB Pocket"), "and carries the game's palette");
 	ck(rows[GM_PALETTE].live, "and is reachable on a Game Boy game");
 	ck(GM_DISC == GM_PALETTE + 1 && !strcmp(rows[GM_DISC].label, "Disc"),

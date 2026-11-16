@@ -72,7 +72,7 @@ RPG), where Snes9x 2005 Plus stays the better pick.
 ## Controls
 
 - **Menu**, tapped: the in-game menu (Continue, Save, Load, Display, Scanline
-  Filter, Hotkeys, Reset, Quit and the rows a system adds). On the shelf it
+  Filter or Look, Hotkeys, Reset, Quit and the rows a system adds). On the shelf it
   opens the shelf's menu.
 - **Menu**, held: the switcher (recent games, Muse).
 - **Volume keys**: volume. **Menu + volume keys**: brightness. Both volume
@@ -106,6 +106,43 @@ The **Scanline Filter** row (shelf menu and in-game menu) turns a light
 scanline look on or off per system. It is drawn by the Flip's 2D engine and
 costs nothing measurable. It needs the game shown at twice its size or more;
 smaller pictures are drawn plainly. It does not apply to native PICO-8.
+Game Boy, Game Boy Color and Game Boy Advance games have **Look** in its
+place.
+
+## Look
+
+A Game Boy, Game Boy Color or Game Boy Advance game has a **Look** row in the
+in-game menu where other systems have Scanline Filter, and those three shelves
+have **Default Look** in their shelf menu. Left and right step it, and so does A:
+
+- **Clean**: the plain picture, as before.
+- **Retro**: the handheld's own screen. A Game Boy game shows the dots of its
+  dot-matrix screen; a Game Boy Color or Game Boy Advance game shows the grid
+  between the pixels of its LCD.
+- **Retro with Bezels**: Retro inside a picture of the handheld's screen lens.
+  The lens shows with Display on Integer or Aspect, and it may move the
+  picture a little to make room for itself. With Stretch it is Retro without
+  the lens.
+
+The screen follows the game, not the shelf, as Palette does: a Game Boy Color
+game on the Game Boy shelf gets the Color's screen.
+
+Under Retro a Game Boy game's **Palette** row picks which Game Boy's screen it
+shows: **DMG** (the first Game Boy, the default), **Pocket** or **Light**,
+each with its own lens. The palette the game had is kept, and comes back when
+Look is Clean again. Retro colours the game's four shades itself, so the core
+draws them in plain grey.
+
+Turning Retro on in a Game Boy Color or Game Boy Advance game sets its Palette
+to **Colour Corrected**, which the grid is made for. Turning it on as a shelf's
+Default Look does the same for the shelf's Default Palette. You can set either
+back to Uncorrected afterwards.
+
+**Scaling** is greyed under Retro, as it is with Display on Integer: the look
+does its own scaling. Retro needs the game shown at twice its size or more;
+smaller pictures are drawn as Clean. A Scanline Filter you turned on for these
+systems before reads as Retro. **Reset Display Overrides** clears the games'
+Look and screen choices with the rest.
 
 ## Native PICO-8 (bring your own)
 

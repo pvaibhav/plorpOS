@@ -47,4 +47,11 @@ int sl_find(const sl_list *l, const char *name);
  * for entry i, ready to follow "SETDISPLAY\t". False if it does not fit. */
 bool sl_fields(const sl_list *l, int i, const char *dir, char *out, size_t cap);
 
+/* What diatom's line `line` says about the SETDISPLAY `fields` sent (sl_fields, look_fields). DRAWN: a DISPLAY
+ * whose shader= is the one asked for (and final=, if `fields` has one), or any DISPLAY for NULL `fields`. REFUSED: ERROR code=bad_shader, after
+ * which diatom draws the chain it had. FAILED: any other ERROR. NONE: anything else, a DISPLAY still in flight
+ * from an earlier request among them. */
+typedef enum { SL_ANSWER_NONE, SL_ANSWER_DRAWN, SL_ANSWER_REFUSED, SL_ANSWER_FAILED } sl_answer;
+sl_answer sl_answer_of(const char *fields, const char *line);
+
 #endif

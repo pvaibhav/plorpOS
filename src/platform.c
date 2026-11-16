@@ -7,6 +7,7 @@
 
 #include "ui.h"   /* the settings line shares the rail's weight and palette */
 #include "platform_dev.h"
+#include "shaderlist.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -1135,7 +1136,9 @@ bool dsend(const char *fmt, ...)
 	return true;
 }
 
-/* One line, or NULL after timeout_ms with nothing complete. -1 blocks. */
+/* One line, or NULL once timeout_ms has passed with nothing complete. The
+ * deadline is fixed on entry: bytes of a line still arriving do not extend it,
+ * and a timeout already spent (0 or less) only reads what is there now. */
 /* A second fd that ends dline's wait early, with no line - set only while
  * diatom_wait runs, whose loop reads it. Every other caller is waiting for
  * an answer and would read an early NULL as a timeout. */
@@ -1144,9 +1147,11 @@ static int d_wake_fd = -1;
 static char *dline(int timeout_ms)
 {
 	static char out[2048];
+	unsigned deadline = plat_now_ms() + (unsigned)(timeout_ms > 0 ? timeout_ms : 0);
 
 	for (;;) {
 		char *nl = memchr(dbuf, '\n', dused);
+		int left = (int)(deadline - plat_now_ms());
 		struct pollfd p = { dsock, POLLIN, 0 };
 		ssize_t n;
 
@@ -1163,7 +1168,7 @@ static char *dline(int timeout_ms)
 		{
 			struct pollfd pp[2] = { p, { d_wake_fd, POLLIN, 0 } };
 
-			if (poll(pp, 2, timeout_ms) <= 0) return NULL;
+			if (poll(pp, 2, left > 0 ? left : 0) <= 0) return NULL;
 			if (!(pp[0].revents & (POLLIN | POLLHUP | POLLERR))) return NULL;
 		}
 		n = read(dsock, dbuf + dused, sizeof dbuf - dused);
@@ -1221,6 +1226,7 @@ static bool dconnect_within(unsigned connect_ms, unsigned ready_ms)
 	const char *path = plat_resident_socket();
 	char *l;
 	unsigned t0;
+	int left;
 
 	if (dsock >= 0) {
 		/* A connection the resident has closed since: it re-execs itself
@@ -1260,8 +1266,8 @@ static bool dconnect_within(unsigned connect_ms, unsigned ready_ms)
 		fprintf(stderr, "diatom: socket up after %u ms\n", plat_now_ms() - t0);
 
 	t0 = plat_now_ms();
-	while (dsock >= 0 && plat_now_ms() - t0 < ready_ms &&
-	       (l = dline((int)(ready_ms - (plat_now_ms() - t0))))) {
+	while (dsock >= 0 && (left = (int)(ready_ms - (plat_now_ms() - t0))) > 0 &&
+	       (l = dline(left))) {
 		if (strncmp(l, "READY", 5) == 0) {
 			if (plat_now_ms() - t0 >= 400)
 				fprintf(stderr, "diatom: ready after %u ms (still starting)\n",
@@ -1377,6 +1383,10 @@ static volatile int d_got_running;
 /* True once Diatom has said RUNNING for the game last sent; any thread. */
 bool plat_resident_running(void) { return d_got_running != 0; }
 
+static bool d_shader_refused;
+
+bool plat_resident_shader_refused(void) { return d_shader_refused; }
+
 /* Asks Diatom to put its SRAM on the card and says when it has. The pause no
  * longer waits for that write (plorpos-2wl.12), so what needs it done - a
  * sleep, which may never wake - asks here, with the screen already dark.
@@ -1405,6 +1415,7 @@ bool plat_resident_send(const plat_game *g)
 	 * diatom_wait, because the launcher re-enters that after every in-game
 	 * menu and the answer must survive those. */
 	d_got_running = 0;
+	d_shader_refused = false;
 
 	{
 		char *l;
@@ -1922,19 +1933,27 @@ void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg)
 /* Only safe while Diatom is paused, which is the only place it is called from:
  * a game that is running can send EXIT, and this would eat it. Paused, the only
  * traffic is what our own SETDISPLAY provoked. */
-bool plat_resident_sync_rect(int timeout_ms)
+bool plat_resident_sync_rect(const char *fields, int timeout_ms)
 {
 	unsigned t0 = SDL_GetTicks();
 	char *l;
 
 	if (dsock < 0) return false;
-	while ((int)(SDL_GetTicks() - t0) < timeout_ms) {
-		l = dline(timeout_ms);
-		if (!l) break;
-		if (strncmp(l, "DISPLAY\t", 8) == 0) { d_note_display(l); return true; }
+	for (;;) {
+		int left = timeout_ms - (int)(SDL_GetTicks() - t0);
+
+		if (left <= 0 || !(l = dline(left))) break;
+		/* A DISPLAY with another shader answers an earlier SETDISPLAY whose
+		 * own wait gave up, and says nothing about this one. */
+		if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
+		switch (sl_answer_of(fields, l)) {
+		case SL_ANSWER_DRAWN: return true;
 		/* Refused: no DISPLAY is coming (a shader diatom could not build,
 		 * plorpos-gkd.72.4), so do not wait the timeout out for one. */
-		if (strncmp(l, "ERROR\t", 6) == 0) { fprintf(stderr, "resident: %s\n", l); return false; }
+		case SL_ANSWER_REFUSED:
+		case SL_ANSWER_FAILED: fprintf(stderr, "resident: %s\n", l); return false;
+		case SL_ANSWER_NONE: break;
+		}
 		if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
 		else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
 	}
@@ -1964,10 +1983,10 @@ bool plat_resident_audio_wait(const char *want, int timeout_ms)
 	char *l;
 
 	if (dsock < 0) return false;
-	while (!(d_audio_known && !strcmp(d_audio_dev, want)) &&
-	       (int)(SDL_GetTicks() - t0) < timeout_ms) {
-		l = dline(timeout_ms - (int)(SDL_GetTicks() - t0));
-		if (!l) break;
+	while (!(d_audio_known && !strcmp(d_audio_dev, want))) {
+		int left = timeout_ms - (int)(SDL_GetTicks() - t0);
+
+		if (left <= 0 || !(l = dline(left))) break;
 		if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
 		else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 		else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
@@ -1982,9 +2001,10 @@ bool plat_resident_saved(const char *path, int timeout_ms)
 	char *l;
 
 	if (dsock < 0) return false;
-	while ((int)(SDL_GetTicks() - t0) < timeout_ms) {
-		l = dline(timeout_ms - (int)(SDL_GetTicks() - t0));
-		if (!l) break;
+	for (;;) {
+		int left = timeout_ms - (int)(SDL_GetTicks() - t0);
+
+		if (left <= 0 || !(l = dline(left))) break;
 		/* The path, not just the word: a manual Save a moment earlier left
 		 * its own SAVED unread on this socket. */
 		if (strncmp(l, "SAVED\tpath=", 11) == 0 && !strcmp(l + 11, path))
@@ -2003,9 +2023,10 @@ bool plat_resident_disc(int *index, int *count, int timeout_ms)
 	char *l;
 
 	if (dsock < 0) return false;
-	while ((int)(SDL_GetTicks() - t0) < timeout_ms) {
-		l = dline(timeout_ms - (int)(SDL_GetTicks() - t0));
-		if (!l) break;
+	for (;;) {
+		int left = timeout_ms - (int)(SDL_GetTicks() - t0);
+
+		if (left <= 0 || !(l = dline(left))) break;
 		/* A refused SETDISC says ERROR and then DISC anyway, so the ERROR
 		 * is logged and the wait goes on for the state it leaves. */
 		if (strncmp(l, "DISC\t", 5) == 0) {
@@ -2171,8 +2192,14 @@ static int diatom_wait(void)
 				 * started a SECOND emulator while the first still held the
 				 * framebuffer - two presenters, which wedges the display
 				 * engine in-kernel, and the supervisor powered the device
-				 * off. */
-				if (!d_got_running) return RES_DEAD;
+				 * off.
+				 *
+				 * Except a refused shader: the chain was sent before RUN, and
+				 * Diatom keeps the None sent ahead of it and starts the game. */
+				if (!d_got_running) {
+					if (sl_answer_of(NULL, l) != SL_ANSWER_REFUSED) return RES_DEAD;
+					d_shader_refused = true;
+				}
 			}
 		}
 		if (dsock < 0) return RES_DEAD;            /* EOF mid-game */

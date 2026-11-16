@@ -242,6 +242,8 @@ typedef struct {
 	 * on PICO-8's shelf running native, which never goes through Diatom. */
 	const char *shader;
 	bool        shader_live;
+	/* The Flip's Game Boy, Color and Advance shelves: the row is Default Look and `shader` its label (look.h). */
+	bool        look;
 	/* The Flip's Default Scaling label, and whether it means anything: not on
 	 * PICO-8's shelf running native, as for the shader. Unused elsewhere. */
 	const char *scaling;

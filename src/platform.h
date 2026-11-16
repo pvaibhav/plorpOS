@@ -242,6 +242,9 @@ typedef struct {
 bool plat_resident_send(const plat_game *g);
 int  plat_resident_wait(void);
 bool plat_resident_running(void);
+/* Diatom refused the game's shader before RUNNING (ERROR code=bad_shader): it kept the None sent before the chain,
+ * so the game runs plain. */
+bool plat_resident_shader_refused(void);
 void plat_resident_flush(unsigned timeout_ms);
 void plat_screen_off(void);
 
@@ -344,12 +347,14 @@ const char *plat_resident_mode(void);
  * whole screen until it has said. Diatom's rect is in the panel's own
  * pixels, which are layout units only where plat_scale() is 1. */
 void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg);
-/* Read replies for up to timeout_ms, stopping as soon as a DISPLAY arrives.
- * For changing the mode from the in-game menu: Diatom answers a SETDISPLAY with
- * the new rect, and the menu wants it now so its backdrop can redraw where the
- * game is about to be, rather than on the next wait after resuming. A missed
- * reply costs a stale backdrop, never a hang. */
-bool plat_resident_sync_rect(int timeout_ms);
+/* Read replies for up to timeout_ms, stopping as soon as Diatom answers the
+ * SETDISPLAY `fields` (sl_answer_of; NULL: any DISPLAY). For changing the mode
+ * from the in-game menu: Diatom answers a SETDISPLAY with the new rect, and the
+ * menu wants it now so its backdrop can redraw where the game is about to be,
+ * rather than on the next wait after resuming. A missed reply costs a stale
+ * backdrop, never a hang. True once it draws `fields`; false on an ERROR or
+ * the timeout. */
+bool plat_resident_sync_rect(const char *fields, int timeout_ms);
 /* Wait up to timeout_ms for Diatom to say it is on `want`, "" the default
  * (Brick, plorpos-cdd). */
 bool plat_resident_audio_wait(const char *want, int timeout_ms);

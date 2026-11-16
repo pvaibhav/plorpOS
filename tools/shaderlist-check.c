@@ -72,6 +72,38 @@ int main(void)
 	   "out of range is None");
 	ck(!sl_fields(&l, 1, "/s", out, 30), "too small a buffer says so");
 
+	printf("diatom's answers:\n");
+	{
+		const char *f = "shader=/s/stock.glsl:nearest:3\tfinal=linear";
+
+		ck(sl_answer_of(f, "DISPLAY\tmode=aspect\tfilter=sharp\trect=640x480+0+0\tshader=/s/stock.glsl:nearest:3\tfinal=linear")
+		   == SL_ANSWER_DRAWN, "the DISPLAY carrying the chain asked for");
+		ck(sl_answer_of(f, "DISPLAY\tmode=aspect\tfilter=sharp\trect=640x480+0+0\tshader=none\tfinal=nearest")
+		   == SL_ANSWER_NONE, "a DISPLAY carrying another is no answer");
+		ck(sl_answer_of(f, "DISPLAY\tmode=aspect\trect=640x480+0+0") == SL_ANSWER_NONE, "nor one carrying none at all");
+		ck(sl_answer_of(f, "DISPLAY\tmode=aspect\trect=640x480+0+0\tshader=/s/stock.glsl:nearest:3\tfinal=nearest")
+		   == SL_ANSWER_NONE, "the same passes with another final is no answer");
+		ck(sl_answer_of(f, "DISPLAY\tmode=aspect\trect=640x480+0+0\tshader=/s/stock.glsl:nearest:3\tfinal=linear\ttop=640x240+0+0")
+		   == SL_ANSWER_DRAWN, "final is read up to the next field");
+		ck(sl_answer_of(f, "DISPLAY\tmode=aspect\trect=640x480+0+0\tshader=/s/stock.glsl:nearest:3")
+		   == SL_ANSWER_NONE, "a final asked for and not echoed is no answer");
+		ck(sl_answer_of("shader=none", "DISPLAY\tmode=aspect\tshader=none\tfinal=linear") == SL_ANSWER_DRAWN,
+		   "None asks no final, so any final answers it");
+		ck(sl_answer_of(NULL, "DISPLAY\tmode=aspect\tshader=none") == SL_ANSWER_DRAWN, "with nothing asked, any DISPLAY");
+		ck(sl_answer_of(f, "LEVEL\tkind=volume\tindex=3\tcount=20") == SL_ANSWER_NONE &&
+		   sl_answer_of(NULL, "RUNNING") == SL_ANSWER_NONE, "other traffic answers nothing");
+		ck(sl_answer_of(f, "ERROR\tcode=bad_shader\tmsg=x.glsl: no such file") == SL_ANSWER_REFUSED, "bad_shader refuses");
+		ck(sl_answer_of(f, "ERROR\tcode=bad_display\tmsg=sideways") == SL_ANSWER_FAILED, "another ERROR fails");
+		ck(sl_answer_of(f, "ERROR\tcode=bad_shaderx\tmsg=") == SL_ANSWER_FAILED, "a code bad_shader only begins");
+	}
+
+	printf("a launch waiting for RUNNING:\n");
+	ck(sl_answer_of(NULL, "ERROR\tcode=bad_shader\tmsg=flipfx: unknown pass flipfx-dots-dmg") == SL_ANSWER_REFUSED,
+	   "a refused chain: the game still starts, on the None sent ahead of it");
+	ck(sl_answer_of(NULL, "ERROR\tcode=rom_unreadable\tmsg=/Roms/GB/x.gb") == SL_ANSWER_FAILED &&
+	   sl_answer_of(NULL, "ERROR\tcode=core_missing\tmsg=no core given") == SL_ANSWER_FAILED,
+	   "any other ERROR: the game never started");
+
 	printf("the shipped list (res/shaders/shaders.cfg):\n");
 	sl_load(&l, "res/shaders/shaders.cfg");
 	ck(l.count == 17, "None + 16 entries");
