@@ -81,6 +81,14 @@ int main(void)
 		ck(sl_answer_of(f, "DISPLAY\tmode=aspect\tfilter=sharp\trect=640x480+0+0\tshader=none\tfinal=nearest")
 		   == SL_ANSWER_NONE, "a DISPLAY carrying another is no answer");
 		ck(sl_answer_of(f, "DISPLAY\tmode=aspect\trect=640x480+0+0") == SL_ANSWER_NONE, "nor one carrying none at all");
+		ck(sl_answer_of(f, "DISPLAY\tmode=aspect\trect=640x480+0+0\tshader=/s/stock.glsl:nearest:3\tfinal=nearest")
+		   == SL_ANSWER_NONE, "the same passes with another final is no answer");
+		ck(sl_answer_of(f, "DISPLAY\tmode=aspect\trect=640x480+0+0\tshader=/s/stock.glsl:nearest:3\tfinal=linear\ttop=640x240+0+0")
+		   == SL_ANSWER_DRAWN, "final is read up to the next field");
+		ck(sl_answer_of(f, "DISPLAY\tmode=aspect\trect=640x480+0+0\tshader=/s/stock.glsl:nearest:3")
+		   == SL_ANSWER_NONE, "a final asked for and not echoed is no answer");
+		ck(sl_answer_of("shader=none", "DISPLAY\tmode=aspect\tshader=none\tfinal=linear") == SL_ANSWER_DRAWN,
+		   "None asks no final, so any final answers it");
 		ck(sl_answer_of(NULL, "DISPLAY\tmode=aspect\tshader=none") == SL_ANSWER_DRAWN, "with nothing asked, any DISPLAY");
 		ck(sl_answer_of(f, "LEVEL\tkind=volume\tindex=3\tcount=20") == SL_ANSWER_NONE &&
 		   sl_answer_of(NULL, "RUNNING") == SL_ANSWER_NONE, "other traffic answers nothing");

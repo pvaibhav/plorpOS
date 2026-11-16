@@ -137,10 +137,21 @@ static const char *field(const char *s, const char *key, size_t *len)
 	return NULL;
 }
 
-sl_answer sl_answer_of(const char *fields, const char *line)
+/* True if `line` carries `key` as `fields` does. */
+static bool same_field(const char *fields, const char *line, const char *key)
 {
 	const char *want, *got;
 	size_t wn, gn;
+
+	want = field(fields, key, &wn);
+	got = field(line, key, &gn);
+	return want && got && wn == gn && !strncmp(want, got, wn);
+}
+
+sl_answer sl_answer_of(const char *fields, const char *line)
+{
+	const char *got;
+	size_t gn;
 
 	if (!strncmp(line, "ERROR\t", 6)) {
 		got = field(line, "code=", &gn);
@@ -148,7 +159,8 @@ sl_answer sl_answer_of(const char *fields, const char *line)
 	}
 	if (strncmp(line, "DISPLAY\t", 8)) return SL_ANSWER_NONE;
 	if (!fields) return SL_ANSWER_DRAWN;
-	want = field(fields, "shader=", &wn);
-	got = field(line, "shader=", &gn);
-	return want && got && wn == gn && !strncmp(want, got, wn) ? SL_ANSWER_DRAWN : SL_ANSWER_NONE;
+	/* final= too, when asked: two entries can share their passes and differ only there. */
+	return same_field(fields, line, "shader=") &&
+	       (!field(fields, "final=", &gn) || same_field(fields, line, "final="))
+	       ? SL_ANSWER_DRAWN : SL_ANSWER_NONE;
 }
