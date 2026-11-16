@@ -131,6 +131,8 @@ stage_all() {
 	mkdir -p "$S/res/maps"; cp "$ROOT/res/nano/maps/"*.txt "$S/res/maps/"
 	rm -rf "$S/cores" "$S/shaders"   # no GPU, no shaders: just the two display filters' list
 	mkdir -p "$S/shaders"; cp "$ROOT/sd/miyoo/shaders.cfg" "$S/shaders/"
+	# Look's lenses (tools/flip-bezels.py): diatom finds them beside the bezel pass's path.
+	mkdir -p "$S/shaders/bezels"; cp "$ROOT/sd/miyoo/bezels/"*.png "$S/shaders/bezels/"
 	flip_cards "$S"
 }
 stage_package() {
