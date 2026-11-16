@@ -134,8 +134,9 @@ Look is Clean again. Retro colours the game's four shades itself, so the core
 draws them in plain grey.
 
 Turning Retro on in a Game Boy Color or Game Boy Advance game sets its Palette
-to **Colour Corrected**, which the grid is made for. You can set it back to
-Uncorrected afterwards.
+to **Colour Corrected**, which the grid is made for. Turning it on as a shelf's
+Default Look does the same for the shelf's Default Palette. You can set either
+back to Uncorrected afterwards.
 
 **Scaling** is greyed under Retro, as it is with Display on Integer: the look
 does its own scaling. Retro needs the game shown at twice its size or more;
