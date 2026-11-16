@@ -7,6 +7,7 @@
 
 #include "ui.h"   /* the settings line shares the rail's weight and palette */
 #include "platform_dev.h"
+#include "shaderlist.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -1377,6 +1378,10 @@ static volatile int d_got_running;
 /* True once Diatom has said RUNNING for the game last sent; any thread. */
 bool plat_resident_running(void) { return d_got_running != 0; }
 
+static bool d_shader_refused;
+
+bool plat_resident_shader_refused(void) { return d_shader_refused; }
+
 /* Asks Diatom to put its SRAM on the card and says when it has. The pause no
  * longer waits for that write (plorpos-2wl.12), so what needs it done - a
  * sleep, which may never wake - asks here, with the screen already dark.
@@ -1405,6 +1410,7 @@ bool plat_resident_send(const plat_game *g)
 	 * diatom_wait, because the launcher re-enters that after every in-game
 	 * menu and the answer must survive those. */
 	d_got_running = 0;
+	d_shader_refused = false;
 
 	{
 		char *l;
@@ -1423,29 +1429,6 @@ bool plat_resident_send(const plat_game *g)
 		d_mode[0] = '\0';
 		d_pend_vol = d_pend_bri = -1;
 
-		/* The shader before RUN too (plorpos-reo.4.2). RUN's warmup draws
-		 * three frames before Diatom reads another message, so a chain sent
-		 * after it showed the game plain first - and on the Brick, where a
-		 * chain means a GL window, plain, then None's window down, then the
-		 * chain's up: a black flash on every launch. Sent here, the first
-		 * frame is drawn with it. None first: a chain Diatom refuses then
-		 * leaves the plain picture, not the last game's (ADR-0041).
-		 *
-		 * Its answer is read here, before RUN: an ERROR left unread would
-		 * reach diatom_wait before RUNNING and read as a game that never
-		 * started, and the launcher would start a second emulator beside
-		 * this one. A refused chain is a display setting that failed; the
-		 * game starts on the None already drawn, with plain_opts. */
-		bool refused = false;
-		if (g->shader) {
-			dsend("SETDISPLAY\tshader=none");
-			if (*g->shader && plat_resident_sync_rect(2000)) {
-				dsend("SETDISPLAY\t%s", g->shader);
-				refused = !plat_resident_sync_rect(2000);
-				if (refused) fprintf(stderr, "resident: shader not applied, starting with none\n");
-			}
-		}
-
 		/* Before RUN, not after. mgba_sgb_borders and mgba_use_bios are both
 		 * marked (Restart) by the core, meaning they are read during
 		 * retro_load_game; a SETOPT that arrives after the game is up applies
@@ -1460,9 +1443,8 @@ bool plat_resident_send(const plat_game *g)
 				dsend("SETOPT\tkey=%.*s\tvalue=%s",
 				      (int)(eq - kv), kv, eq + 1);
 			}
-			const char *const *opts = refused && g->plain_opts[0] ? g->plain_opts : g->opts;
 			for (i = 0; i < 2; i++) {
-				const char *kv = opts[i], *eq = kv ? strchr(kv, '=') : NULL;
+				const char *kv = g->opts[i], *eq = kv ? strchr(kv, '=') : NULL;
 				if (!eq) continue;
 				dsend("SETOPT\tkey=%.*s\tvalue=%s",
 				      (int)(eq - kv), kv, eq + 1);
@@ -1492,6 +1474,18 @@ bool plat_resident_send(const plat_game *g)
 		 * sample - a game started while music plays never makes a sound -
 		 * and sent every time, a resident that restarted cannot start loud. */
 		if (dsend("SETQUIET\ton=%d", d_quiet)) d_quiet_said = d_quiet;
+
+		/* The shader before RUN too (plorpos-reo.4.2). RUN's warmup draws
+		 * three frames before Diatom reads another message, so a chain sent
+		 * after it showed the game plain first - and on the Brick, where a
+		 * chain means a GL window, plain, then None's window down, then the
+		 * chain's up: a black flash on every launch. Sent here, the first
+		 * frame is drawn with it. None first: a chain Diatom refuses then
+		 * leaves the plain picture, not the last game's (ADR-0041). */
+		if (g->shader) {
+			dsend("SETDISPLAY\tshader=none");
+			if (*g->shader) dsend("SETDISPLAY\t%s", g->shader);
+		}
 
 		/* console and cheevos on RUN rather than after it, so a set is
 		 * watched from the first frame - an achievement can fire in the
@@ -2183,8 +2177,14 @@ static int diatom_wait(void)
 				 * started a SECOND emulator while the first still held the
 				 * framebuffer - two presenters, which wedges the display
 				 * engine in-kernel, and the supervisor powered the device
-				 * off. */
-				if (!d_got_running) return RES_DEAD;
+				 * off.
+				 *
+				 * Except a refused shader: the chain was sent before RUN, and
+				 * Diatom keeps the None sent ahead of it and starts the game. */
+				if (!d_got_running) {
+					if (sl_answer_of(NULL, l) != SL_ANSWER_REFUSED) return RES_DEAD;
+					d_shader_refused = true;
+				}
 			}
 		}
 		if (dsock < 0) return RES_DEAD;            /* EOF mid-game */

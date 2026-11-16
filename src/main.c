@@ -3663,11 +3663,24 @@ static void aout_retry_in_game(void)
 }
 
 
+/* A monochrome game launched under Retro, its core sent plain grey: its own palette, for a game whose look diatom
+ * refused (plat_resident_shader_refused). core NULL: none waiting. */
+static struct { pal_list list; int i; const char *core; } g_own_pal;
+
 static void on_game_tick(void)
 {
 	char msg[96];
 
 	int rc;
+
+	/* The refusal came before RUNNING, and the game runs Clean: the Palette row's own path, once it runs. */
+	if (g_own_pal.core && plat_resident_running()) {
+		if (plat_resident_shader_refused()) {
+			fprintf(stderr, "look: refused at launch, the game's own palette\n");
+			pal_send(g_own_pal.list, g_own_pal.i, g_own_pal.core);
+		}
+		g_own_pal.core = NULL;
+	}
 
 	/* Muse, bounded: read what has arrived, and send at most one PLAY when a
 	 * track ends - which is what keeps an album going through a game.
@@ -16360,7 +16373,7 @@ static void launch_one(app *a)
 	 * option rather than failing loudly. */
 	char *argv[20 + 2 * 48 + 6];   /* 48 is platform.c's COREOPT_MAX. And the palette's two (plorpos-gkd.76),
 	                                * and --disc (plorpos-gkd.47) */
-	char palp[64] = "", palc[64] = "", plainp[64] = "", plainc[64] = "";
+	char palp[64] = "", palc[64] = "";
 	char discs[16] = "";
 	int  disc;   /* 0-based; -1 = the core's choice (plorpos-gkd.47) */
 	bool resident = false, want_menu, native;
@@ -16386,8 +16399,9 @@ static void launch_one(app *a)
 		int pal = palette_of(a, o, &v->list.items[v->cursor], &list);
 
 		if (pal >= 0) pal_opts(list, pal, shelf_core(a, o, romfile), palp, sizeof palp, palc, sizeof palc);
-		if (list == PAL_SCREEN && (pal = palette_own(a, o, &v->list.items[v->cursor], &list)) >= 0)
-			pal_opts(list, pal, shelf_core(a, o, romfile), plainp, sizeof plainp, plainc, sizeof plainc);
+		g_own_pal.core = NULL;
+		if (list == PAL_SCREEN && (g_own_pal.i = palette_own(a, o, &v->list.items[v->cursor], &g_own_pal.list)) >= 0)
+			g_own_pal.core = shelf_core(a, o, romfile);
 	}
 	disc = disc_of(a, o, &v->list.items[v->cursor]);
 	/* Each shelf's saves in a folder named as its Roms folder, so the same
@@ -16590,7 +16604,6 @@ static void launch_one(app *a)
 			.preview = pv, .save = save,
 			.console = console, .cheevos = active[0] ? active : NULL,
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
-			.plain_opts = { plainp[0] ? plainp : NULL, plainc[0] ? plainc : NULL },
 			.disc = disc + 1,
 			.shader = game_shader_fields(a, o, &v->list.items[v->cursor], shf, sizeof shf),
 			/* The mode is Diatom's own global and survives from the last

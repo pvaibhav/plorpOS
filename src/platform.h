@@ -225,9 +225,7 @@ extern const char plat_pico8_pad[];
  * achievements, which is the ordinary case (Diatom ADR-0026). `save` is the
  * game's save dir; NULL leaves it at Diatom's --save (plorpos-aev). `opts`
  * are this game's own core options, "key=value" or NULL, sent after the
- * system's so they win - a Game Boy game's palette (plorpos-gkd.76). The
- * Flip's Retro sends a Game Boy game's core plain grey, so `plain_opts` are
- * its own palette, for a launch whose look Diatom refuses. */
+ * system's so they win - a Game Boy game's palette (plorpos-gkd.76). */
 typedef struct {
 	const char *tag, *core, *rom;
 	const char *resume, *exit_state, *preview;
@@ -235,7 +233,6 @@ typedef struct {
 	int         console;
 	const char *cheevos;
 	const char *opts[2];
-	const char *plain_opts[2]; /* in place of opts when Diatom refuses the shader; NULL: opts */
 	int         disc;   /* an .m3u's disc to start on, 1-based; 0 = the core's choice (plorpos-gkd.47) */
 	const char *shader; /* SETDISPLAY fields for the chain, "" for None, NULL with no shader list */
 	const char *mode;   /* Diatom display mode for the first frame, e.g. "aspect"; NULL = its own */
@@ -245,6 +242,9 @@ typedef struct {
 bool plat_resident_send(const plat_game *g);
 int  plat_resident_wait(void);
 bool plat_resident_running(void);
+/* Diatom refused the game's shader before RUNNING (ERROR code=bad_shader): it kept the None sent before the chain,
+ * so the game runs plain. */
+bool plat_resident_shader_refused(void);
 void plat_resident_flush(unsigned timeout_ms);
 void plat_screen_off(void);
 
