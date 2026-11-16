@@ -33,6 +33,15 @@ look_screen look_screen_of(const char *tag, int cgb)
 	return SCREEN_NONE;
 }
 
+const char *look_colour_shelf(const char *tag)
+{
+	switch (look_screen_of(tag, 1)) {
+	case SCREEN_GBC: return "GBC";
+	case SCREEN_GBA: return "GBA";
+	default:         return NULL;
+	}
+}
+
 look_plan look_plan_of(look_value was, look_value now, look_screen s, bool corrected, bool confirmed)
 {
 	look_plan p = { false, false, LOOK_CORE_KEEP };

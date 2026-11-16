@@ -36,6 +36,10 @@ look_screen look_screen_of(const char *tag, int cgb);
 const char *gbscreen_label(int i);
 int gbscreen_find(const char *label);   /* 0 (DMG) for NULL or a label not listed */
 
+/* The shelf whose Default Palette the colour games on shelf `tag` follow: a Color game on the Game Boy shelf follows
+ * the Color shelf's, as the Palette row has it. NULL for a shelf with no Look. */
+const char *look_colour_shelf(const char *tag);
+
 /* What follows a change of Look from `was` to `now`. In a game's menu, once diatom has answered the SETDISPLAY for
  * `now` (`confirmed`); a refused look changes nothing. For a shelf's Default Look, which nothing confirms, `confirmed`
  * is true and `s` is the screen of the colour games that follow it (look_screen_of(tag, 1)). `corrected` says whether

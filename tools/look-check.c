@@ -117,6 +117,20 @@ int main(void)
 	ck(plan_is(look_plan_of(LOOK_CLEAN, LOOK_RETRO, SCREEN_NONE, false, true), 0, 0, LOOK_CORE_KEEP),
 	   "no screen, no look");
 
+	printf("a shelf's Default Look:\n");
+	ck(!strcmp(look_colour_shelf("GB"), "GBC") && !strcmp(look_colour_shelf("GBC"), "GBC") &&
+	   !strcmp(look_colour_shelf("GBA"), "GBA") && !look_colour_shelf("NES"),
+	   "colour games follow palettedef.GBC on both Game Boy shelves, palettedef.GBA on the Advance's");
+	ck(look_screen_of("GB", 1) == SCREEN_GBC && look_screen_of("GBA", 1) == SCREEN_GBA, "and have the grid's screens");
+	ck(plan_is(look_plan_of(LOOK_CLEAN, LOOK_RETRO, look_screen_of("GB", 1), false, true), 1, 1, LOOK_CORE_KEEP),
+	   "Clean to Retro with an Uncorrected default: the games inheriting it are corrected");
+	ck(plan_is(look_plan_of(LOOK_CLEAN, LOOK_RETRO_BEZELS, look_screen_of("GBA", 1), false, true), 1, 1, LOOK_CORE_KEEP),
+	   "the Advance shelf the same");
+	ck(plan_is(look_plan_of(LOOK_RETRO, LOOK_RETRO_BEZELS, look_screen_of("GBC", 1), false, true), 1, 0, LOOK_CORE_KEEP),
+	   "an Uncorrected default chosen under Retro stays");
+	ck(plan_is(look_plan_of(LOOK_RETRO_BEZELS, LOOK_CLEAN, look_screen_of("GBC", 1), true, true), 1, 0, LOOK_CORE_KEEP),
+	   "back to Clean writes no palette");
+
 	printf(fails ? "%d FAILED\n" : "ALL PASS\n", fails);
 	return fails != 0;
 }

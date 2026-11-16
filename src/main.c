@@ -886,12 +886,18 @@ static look_value sys_look(app *a, int sys)
 	return look_find(&a->shaders, db_get_str(db_dev(), key, name, sizeof name, NULL) ? name : NULL);
 }
 
-static void sys_look_save(app *a, int sys, look_value v)
+/* The shelf's Default Look one step on. Leaving Clean corrects the Default Palette its colour games follow, as the
+ * in-game row corrects the game's (look_plan_of); a game's own Palette row is left as it is. */
+static void sys_look_step(app *a, int sys, int d)
 {
 	char key[CFG_STR + 16];
+	const char *tag = a->sys.systems[sys].tag, *colour = look_colour_shelf(tag);
+	look_value was = sys_look(a, sys), v = (look_value)((was + d + LOOK_COUNT) % LOOK_COUNT);
+	look_plan p = look_plan_of(was, v, look_screen_of(tag, 1), palette_default_of(colour) == 0, true);
 
-	snprintf(key, sizeof key, "shader.%s", a->sys.systems[sys].tag);
-	db_set_str(db_dev(), key, look_stored(v));
+	snprintf(key, sizeof key, "shader.%s", tag);
+	if (p.keep) db_set_str(db_dev(), key, look_stored(v));
+	if (p.correct) palette_default_save(colour, 0);
 }
 
 /* Clean for a game with no screen. */
@@ -10171,8 +10177,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * the system, which is what a launch and the in-game row both read. */
 		/* Default Look: left and right step it, A steps forward, as Default Scaling. */
 		if (sel == SM_SHADER && (d || key == IN_ACCEPT) && look_tag(a, a->sys.systems[a->sys_cursor].tag)) {
-			sys_look_save(a, a->sys_cursor,
-			              (look_value)((sys_look(a, a->sys_cursor) + (d ? d : 1) + LOOK_COUNT) % LOOK_COUNT));
+			sys_look_step(a, a->sys_cursor, d ? d : 1);
 			return MENU_STAY;
 		}
 		if (sel == SM_SHADER && (d || key == IN_ACCEPT) && a->shaders.count > 1) {
